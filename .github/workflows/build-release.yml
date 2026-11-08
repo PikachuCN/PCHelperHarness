@@ -1,0 +1,125 @@
+name: Build and release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-release:
+    name: Windows x64
+    runs-on: windows-latest
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Read release metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $version = (Get-Content -Raw "src-tauri/tauri.conf.json" | ConvertFrom-Json).version
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "No version found in src-tauri/tauri.conf.json"
+          }
+          $tag = "v$version-build.$env:GITHUB_RUN_NUMBER"
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend and check types
+        run: pnpm build
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
+
+      - name: Build application and plugins
+        run: pnpm tauri build --no-bundle
+
+      - name: Package portable release
+        id: package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.meta.outputs.version }}"
+          $exe = "src-tauri/target/release/harness.exe"
+          $dll = "src-tauri/target/release/python.dll"
+          foreach ($file in @($exe, $dll)) {
+            if (-not (Test-Path $file -PathType Leaf)) {
+              throw "Missing build artifact: $file"
+            }
+          }
+
+          $stage = "release-package"
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item $exe -Destination "$stage/harness.exe" -Force
+          Copy-Item $dll -Destination "$stage/python.dll" -Force
+
+          $zip = "Harness-$version-windows-x64-portable.zip"
+          Compress-Archive -Path "$stage/*" -DestinationPath $zip -Force
+
+          $checksums = "Harness-$version-SHA256SUMS.txt"
+          $hash = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $zip" | Out-File -FilePath $checksums -Encoding ascii
+
+          "zip=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "checksums=$checksums" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Harness-${{ steps.meta.outputs.version }}-windows-x64-${{ github.run_number }}
+          path: |
+            ${{ steps.package.outputs.zip }}
+            ${{ steps.package.outputs.checksums }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          RELEASE_ZIP: ${{ steps.package.outputs.zip }}
+          RELEASE_CHECKSUMS: ${{ steps.package.outputs.checksums }}
+        run: |
+          $repo = $env:GITHUB_REPOSITORY
+          $assets = @($env:RELEASE_ZIP, $env:RELEASE_CHECKSUMS)
+
+          gh release view $env:RELEASE_TAG --repo $repo --json id 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG @assets --repo $repo --clobber
+          } else {
+            gh release create $env:RELEASE_TAG @assets --repo $repo --title "Harness $env:RELEASE_TAG" --generate-notes --target $env:GITHUB_SHA --latest
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to publish GitHub Release"
+          }
