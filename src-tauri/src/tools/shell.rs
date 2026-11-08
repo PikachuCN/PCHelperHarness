@@ -84,7 +84,7 @@ pub(crate) async fn execute_fixed_shell(
         }
         "cmd" => {
             let mut process = Command::new("cmd.exe");
-            process.args(["/d", "/s", "/c", command]);
+            process.args(["/d", "/s", "/c"]).raw_arg(command);
             process
         }
         "wsl" => {
@@ -581,13 +581,17 @@ mod tests {
     #[cfg(windows)]
     #[tokio::test]
     async fn cmd_chinese_output_is_decoded_and_streamed() {
+        let directory = tempfile::tempdir().unwrap();
+        let output_path = directory.path().join("cmd-output.txt");
+        std::fs::write(&output_path, "Harness 中文诊断输出\r\n").unwrap();
+        let command = format!("type \"{}\"", output_path.display());
         let streamed = Arc::new(Mutex::new(String::new()));
         let streamed_clone = streamed.clone();
         let callback: OutputCallback = Arc::new(move |output| {
             streamed_clone.lock().unwrap().push_str(&output.text);
         });
         let result = execute_shell(
-            &request("cmd", "chcp 65001>nul && echo Harness 中文诊断输出", 10),
+            &request("cmd", &command, 10),
             CancellationToken::new(),
             callback,
         )
