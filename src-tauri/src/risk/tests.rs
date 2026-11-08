@@ -76,8 +76,13 @@ fn unknown_python_is_l1() {
 }
 
 #[test]
-fn unsupported_shell_cannot_be_l0() {
-    check("zsh-unknown", "dir", RiskLevel::L1);
+fn unsupported_plugin_shell_requires_l3() {
+    check("zsh-unknown", "dir", RiskLevel::L3);
+    check(
+        "node",
+        "require('fs').rmSync('D:/important', { recursive: true })",
+        RiskLevel::L3,
+    );
 }
 
 #[test]

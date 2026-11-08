@@ -1,4 +1,4 @@
-use crate::{platform, skills, tools};
+use crate::{platform, plugins, skills, tools};
 
 pub fn system_prompt() -> String {
     format!(
@@ -16,6 +16,7 @@ pub fn system_prompt() -> String {
 9. 不声称已验证未实际验证的结果。最终答复应包含：发现的问题、做过的操作、结果，以及必要的后续建议。
 
 本机可用 shell：{shells}。不支持交互式命令。
+已加载运行时插件：{plugins}。只有出现在可用 shell 列表中的插件工具才可以调用。
 
 系统快照：
 {snapshot}
@@ -23,6 +24,7 @@ pub fn system_prompt() -> String {
 可用 Skills（只有名称和描述，需要时再加载）：
 {skills}"#,
         shells = tools::available_shells().join("、"),
+        plugins = plugins::prompt_catalog(),
         snapshot = platform::prompt_text(),
         skills = skills::prompt_catalog(),
     )

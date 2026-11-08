@@ -1,5 +1,6 @@
 use super::probes::command_exists;
 use super::{OutputCallback, ToolOutput, ToolRequest, ToolResult};
+use crate::plugins::{PluginLaunch, PluginScript};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -37,7 +38,10 @@ pub async fn execute_shell(
     if explanation.trim().is_empty() {
         return ToolResult::error(request, "run_command 必须提供 explanation_zh");
     }
-    if !super::probes::available_shells().contains(&shell) {
+    if !super::probes::available_shells()
+        .iter()
+        .any(|available| available == shell)
+    {
         return ToolResult::error(request, format!("本机未检测到可用 shell：{shell}"));
     }
     let timeout = request
@@ -89,41 +93,27 @@ pub(crate) async fn execute_fixed_shell(
             process
         }
         "python" => {
-            use std::io::Write;
-            let file = match tempfile::Builder::new()
-                .prefix("harness-")
-                .suffix(".py")
-                .tempfile()
-            {
-                Ok(mut file) => {
-                    if let Err(error) = file.write_all(command.as_bytes()) {
-                        return ToolResult::error(
-                            request,
-                            format!("无法写入临时 Python 脚本：{error}"),
-                        );
-                    }
-                    file
-                }
-                Err(error) => {
-                    return ToolResult::error(request, format!("无法创建临时 Python 脚本：{error}"))
-                }
-            };
-            let path = file.path().to_path_buf();
-            temporary_script = Some(file);
             let launch = match super::python::launch() {
                 Ok(launch) => launch,
-                Err(error) => {
-                    drop(temporary_script.take());
-                    return ToolResult::error(request, error);
-                }
+                Err(error) => return ToolResult::error(request, error),
             };
-            let mut process = Command::new(&launch.program);
-            process.args(&launch.base_args);
-            process.arg(&path);
+            let mut process = match external_process(command, &launch, &mut temporary_script) {
+                Ok(process) => process,
+                Err(error) => return ToolResult::error(request, error),
+            };
             process.env("PYTHONIOENCODING", "utf-8");
             process
         }
-        other => return ToolResult::error(request, format!("不支持的 shell：{other}")),
+        other => {
+            let launch = match crate::plugins::launch(other) {
+                Some(launch) => launch,
+                None => return ToolResult::error(request, format!("不支持的 shell：{other}")),
+            };
+            match external_process(command, &launch, &mut temporary_script) {
+                Ok(process) => process,
+                Err(error) => return ToolResult::error(request, error),
+            }
+        }
     };
 
     process
@@ -300,6 +290,33 @@ fn emit_decoded(
         stream: stream.to_string(),
         text,
     });
+}
+
+fn external_process(
+    command: &str,
+    launch: &PluginLaunch,
+    temporary_script: &mut Option<tempfile::NamedTempFile>,
+) -> Result<Command, String> {
+    let mut process = Command::new(&launch.program);
+    process.args(&launch.base_args);
+    match &launch.script {
+        PluginScript::File { extension } => {
+            use std::io::Write;
+            let mut file = tempfile::Builder::new()
+                .prefix("harness-")
+                .suffix(extension)
+                .tempfile()
+                .map_err(|error| format!("无法创建临时脚本：{error}"))?;
+            file.write_all(command.as_bytes())
+                .map_err(|error| format!("无法写入临时脚本：{error}"))?;
+            process.arg(file.path());
+            *temporary_script = Some(file);
+        }
+        PluginScript::Argument => {
+            process.arg(command);
+        }
+    }
+    Ok(process)
 }
 
 fn encode_powershell(command: &str) -> String {

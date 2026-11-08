@@ -4,6 +4,7 @@ use crate::risk::RiskAssessment;
 use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -30,6 +31,8 @@ pub struct Session {
     pub updated_at: DateTime<Utc>,
     pub messages: Vec<ChatMessage>,
     pub model_messages: Vec<LlmMessage>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub system_prompt_snapshots: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,6 +175,20 @@ impl Session {
             updated_at: now,
             messages: Vec::new(),
             model_messages: vec![LlmMessage::system(system_prompt)],
+            system_prompt_snapshots: BTreeMap::new(),
+        }
+    }
+
+    pub fn refresh_system_prompt(&mut self, system_prompt: String) {
+        if let Some(message) = self
+            .model_messages
+            .first_mut()
+            .filter(|message| matches!(message, LlmMessage::System { .. }))
+        {
+            *message = LlmMessage::system(system_prompt);
+        } else {
+            self.model_messages
+                .insert(0, LlmMessage::system(system_prompt));
         }
     }
 
@@ -196,6 +213,10 @@ impl Session {
         };
         if self.title == "新对话" {
             self.title = summarize_title(text);
+        }
+        if let Some(LlmMessage::System { content }) = self.model_messages.first() {
+            self.system_prompt_snapshots
+                .insert(message.id.clone(), content.clone());
         }
         self.model_messages.push(LlmMessage::user(text));
         self.messages.push(message.clone());
@@ -286,7 +307,14 @@ pub fn prompt_through_user(
     for (index, message) in session.model_messages.iter().enumerate() {
         if matches!(message, LlmMessage::User { .. }) {
             if remaining == 0 {
-                return Ok(session.model_messages[..=index].to_vec());
+                let mut prompt = session.model_messages[..=index].to_vec();
+                if let (Some(snapshot), Some(LlmMessage::System { content })) = (
+                    session.system_prompt_snapshots.get(message_id),
+                    prompt.first_mut(),
+                ) {
+                    *content = snapshot.clone();
+                }
+                return Ok(prompt);
             }
             remaining -= 1;
         }
@@ -424,6 +452,30 @@ mod tests {
         assert_eq!(summarize_title("你好"), "你好");
         let long_title = summarize_title("请帮我检查一个不属于预分类但内容特别长的自定义故障问题");
         assert!(long_title.chars().count() <= 25);
+    }
+
+    #[test]
+    fn refreshes_system_prompt_without_losing_conversation() {
+        let mut session = Session::new("旧提示词".to_string());
+        let first = session.push_user("第一个问题");
+        session.refresh_system_prompt("包含 Python 插件的新提示词".to_string());
+        let second = session.push_user("第二个问题");
+
+        assert_eq!(session.model_messages.len(), 3);
+        assert!(matches!(
+            &session.model_messages[0],
+            LlmMessage::System { content } if content == "包含 Python 插件的新提示词"
+        ));
+        let first_prompt = prompt_through_user(&session, &first.id).unwrap();
+        assert!(matches!(
+            &first_prompt[0],
+            LlmMessage::System { content } if content == "旧提示词"
+        ));
+        let second_prompt = prompt_through_user(&session, &second.id).unwrap();
+        assert!(matches!(
+            &second_prompt[0],
+            LlmMessage::System { content } if content == "包含 Python 插件的新提示词"
+        ));
     }
 
     #[test]

@@ -2,6 +2,7 @@ pub mod agent;
 pub mod config;
 pub mod llm;
 pub mod platform;
+pub mod plugins;
 pub mod risk;
 pub mod skills;
 pub mod tools;
@@ -347,10 +348,7 @@ fn get_env_info(state: State<'_, AppState>) -> Result<EnvInfo, String> {
         config_used_fallback: location.used_fallback,
         webview2_version: webview2_version(),
         resume_session_id: state.resume_session.clone(),
-        available_shells: tools::available_shells()
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
+        available_shells: tools::available_shells(),
     })
 }
 

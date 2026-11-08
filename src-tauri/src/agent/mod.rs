@@ -57,6 +57,7 @@ pub async fn run_turn(
         Some(id) => session::load(&id).map_err(|error| error.to_string())?,
         None => Session::new(prompt::system_prompt()),
     };
+    session.refresh_system_prompt(prompt::system_prompt());
     let session_id = session.id.clone();
     let turn_id = Uuid::new_v4().to_string();
     let mut provider = config

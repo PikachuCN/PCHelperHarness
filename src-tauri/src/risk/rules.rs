@@ -79,6 +79,16 @@ pub(crate) fn classify_command(shell: &str, command: &str) -> Vec<RuleMatch> {
     if command.trim().is_empty() {
         return vec![unknown("empty.command", "空命令")];
     }
+    if kind == ShellKind::Unknown {
+        return vec![RuleMatch::new(
+            RiskLevel::L3,
+            "shell.unsupported_plugin",
+            format!(
+                "插件 Shell「{}」的脚本语法无法审计，可能执行任意系统修改，必须按 L3 审批。",
+                shell.trim()
+            ),
+        )];
+    }
 
     // 编码与动态执行直接判为 L3，避免拆分后把载荷误当成普通文本。
     if let Some(finding) = detect_obfuscation(kind, command) {
@@ -92,21 +102,7 @@ pub(crate) fn classify_command(shell: &str, command: &str) -> Vec<RuleMatch> {
 
     segments
         .iter()
-        .map(|segment| {
-            let finding = classify_segment(kind, segment);
-            if kind == ShellKind::Unknown && finding.level == RiskLevel::L0 {
-                RuleMatch::new(
-                    RiskLevel::L1,
-                    "shell.unsupported",
-                    format!(
-                        "Shell 类型「{}」不受支持，即使命令形似只读查询也不能按 L0 放行。",
-                        shell.trim()
-                    ),
-                )
-            } else {
-                finding
-            }
-        })
+        .map(|segment| classify_segment(kind, segment))
         .collect()
 }
 
@@ -273,7 +269,11 @@ fn classify_segment(kind: ShellKind, segment: &str) -> RuleMatch {
         ShellKind::PowerShell => classify_powershell(&tokens),
         ShellKind::Wsl => classify_wsl(&tokens),
         ShellKind::Python => classify_python(segment),
-        ShellKind::Unknown => unknown("shell.unsupported", segment),
+        ShellKind::Unknown => RuleMatch::new(
+            RiskLevel::L3,
+            "shell.unsupported_plugin",
+            "插件 Shell 的脚本语法无法审计，必须按 L3 审批。",
+        ),
     };
 
     if has_output_redirection(segment) && finding.level == RiskLevel::L0 {

@@ -10,13 +10,18 @@ use std::path::{Path, PathBuf};
 use sysinfo::{Disks, Networks, System};
 use tokio_util::sync::CancellationToken;
 
-pub fn available_shells() -> Vec<&'static str> {
-    let mut shells = vec!["cmd", "powershell"];
+pub fn available_shells() -> Vec<String> {
+    let mut shells = vec!["cmd".to_string(), "powershell".to_string()];
     if command_exists("wsl.exe") {
-        shells.push("wsl");
+        shells.push("wsl".to_string());
     }
-    if super::python::launch().is_ok() {
-        shells.push("python");
+    for shell in crate::plugins::shell_names() {
+        if !shells.contains(&shell) {
+            shells.push(shell);
+        }
+    }
+    if super::python::launch().is_ok() && !shells.iter().any(|shell| shell == "python") {
+        shells.push("python".to_string());
     }
     shells
 }

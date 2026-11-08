@@ -138,27 +138,31 @@ pnpm tauri build --no-bundle
 
 生产 EXE 必须通过上述 Tauri 命令完整构建。不要用 `cargo build --release` 直接覆盖产物：它可能把开发地址 `localhost:1420` 编译进程序，开发服务关闭后就会显示 404 或连接被拒绝。
 
-产物：`src-tauri/target/release/harness.exe`
+产物：
 
-- 大小：18,502,144 字节（17.65 MiB）
-- SHA-256：`CA44837A02F2D884BA15156526FAEDB8CA30E60A16E86BB118CBBE9E83205D70`
-- 最终 Release 构建于 2026-11-08 20:43 完成；237 个库测试与 2 个协议集成测试通过，内嵌 Python 3.13.17 已完成独立中文输出验证
+- `src-tauri/target/release/harness.exe`：6,987,776 字节（6.66 MiB），SHA-256 `AD9ED07ABA6F269EC59543489A955099F719B36A6C2859B6BFA9901155E1C62F`
+- `src-tauri/target/release/python.dll`：11,782,656 字节（11.24 MiB），SHA-256 `9542410D35EB886C5BADB469F253DBFAC7348F4892E951CD40425F80DA35BF67`
 
-将 EXE 复制到任意可写空目录运行。首次启动应生成 `config.json`、`skills/` 和按需使用的 `data/`。应用依赖系统 WebView2；缺失时会显示中文安装提示。未签名版本可能触发 SmartScreen“未知发布者”。
+最终 Release 构建于 2026-11-08 21:45 完成；238 个主程序库测试、2 个协议集成测试、2 个插件测试及 1 个 DLL 动态加载测试通过，包含插件提示词、历史提示词快照、插件 L3 风控和 Python 中文输出验证。
 
-### Python 便携运行时
+将 EXE 复制到任意可写空目录即可运行基础功能；需要 Python 时同时复制 `python.dll`。首次启动应生成 `config.json`、`skills/` 和按需使用的 `data/`。应用依赖系统 WebView2；缺失时会显示中文安装提示。未签名版本可能触发 SmartScreen“未知发布者”。
 
-主 EXE 内嵌官方 Python 3.13.17 Windows x64 embeddable 压缩包，无需安装 Python。首次环境检测时会释放到 `data/runtime/python-3.13.17-embed-amd64/`；应用目录不可写时，使用 `%APPDATA%/Harness/data/runtime/`。压缩包来源为 `https://www.python.org/ftp/python/3.13.17/python-3.13.17-embed-amd64.zip`，SHA-256 为 `9e35319bffedab8b36ad44d8f377cb4f1733bcec257a0b6d04d94f01486ddb38`。
+### 运行时 DLL 插件
 
-Python 按以下顺序解析，放置外部运行时后需重启应用：
+主 EXE 不再内嵌 Python。需要 Python 时，将独立的 `python.dll` 与 `harness.exe` 放在同一目录并重启应用；不需要 Python 时可以只分发 EXE。主程序会扫描应用同目录的 DLL，加载符合 ABI 的插件，并将插件声明的 shell 动态加入提示词和 `run_command` 的枚举。未检测到的插件不会出现在模型可用工具中。
 
-1. 应用同级 `python/python.exe`，适合包含第三方依赖的完整便携环境。
-2. 应用同级 `python.exe`，其 DLL 和标准库也须位于可解析的位置。
-3. 应用同级 `python.zip`，自动释放到独立缓存目录，压缩包根目录必须包含 `python.exe`。
-4. EXE 内嵌运行时。
-5. 系统 `PATH` 中的 `python`、`py -3` 或 `python3`。
+Python 按以下顺序解析：应用同级 `python/python.exe`、应用同级 `python.exe`、DLL 插件提供的运行时、系统 `PATH` 中的 `python` / `py -3` / `python3`。外部目录适合包含第三方依赖的完整便携环境。
 
-内嵌版本提供 Python 标准库，不预装第三方 pip 包，也不会在首次运行时联网安装依赖。外部便携目录与 ZIP 释放后的运行时均通过绝对路径启动，不依赖系统 `PATH`。
+`python.dll` 内嵌官方 Python 3.13.17 Windows x64 embeddable 压缩包，首次加载时释放到 `data/plugins/python/python-3.13.17-embed-amd64/`；应用目录不可写时使用 `%APPDATA%/Harness/data/plugins/python/`。压缩包来源为 `https://www.python.org/ftp/python/3.13.17/python-3.13.17-embed-amd64.zip`，SHA-256 为 `9e35319bffedab8b36ad44d8f377cb4f1733bcec257a0b6d04d94f01486ddb38`。插件提供标准库，不预装第三方 pip 包，也不会在首次运行时联网安装依赖。
+
+其他运行时也可制作单文件插件。ABI 版本 1 要求 DLL 导出：
+
+1. `harness_plugin_api_version() -> u32`，返回 `1`。
+2. `harness_plugin_manifest_json() -> *const c_char`，返回静态 UTF-8 JSON，包含 `id`、`name`、`version`、`shell` 和 `script`。`script` 支持 `{"mode":"file","extension":".py"}` 或 `{"mode":"argument"}`。
+3. `harness_plugin_prepare_json(context_json) -> *mut c_char`，接收含 `dataDir` 的上下文，返回 `{"program":"绝对路径","baseArgs":[],"error":null}`。插件可在这一阶段释放运行时。
+4. `harness_plugin_free_string(pointer)`，释放上一步返回的字符串。
+
+插件不得覆盖内置 shell 及其风控别名，返回的程序必须是存在的绝对路径。Python 使用现有 Python 风险规则；其他插件 shell 的脚本语法无法静态审计，因此统一按 L3 高风险审批，避免自动模式跳过确认。每轮对话会刷新当前插件提示词，同时按用户消息保留历史系统提示词快照。DLL 是具有完整本机代码权限的受信任组件，不应加载来源不明的插件。
 
 ## 仍需人工验证
 

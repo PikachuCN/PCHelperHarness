@@ -52,14 +52,19 @@ pub fn tool_definitions() -> Vec<crate::llm::ToolDefinition> {
         "type": "string",
         "description": "用简明中文解释这一步要做什么，以及为什么需要执行"
     });
+    let shells = available_shells();
+    let command_description = format!(
+        "在本机通过可用 shell（{}）执行命令。命令必须是非交互式的。",
+        shells.join("、")
+    );
     let definitions = vec![
         (
             "run_command",
-            "在本机执行 CMD、PowerShell、WSL 或 Python 命令。命令必须是非交互式的。",
+            command_description.as_str(),
             json!({
                 "type": "object",
                 "properties": {
-                    "shell": {"type": "string", "enum": available_shells()},
+                    "shell": {"type": "string", "enum": shells},
                     "command": {"type": "string"},
                     "explanation_zh": explanation,
                     "risk_self": {"type": "string", "enum": ["l0", "l1", "l2", "l3"]},
