@@ -266,6 +266,13 @@ async fn pump_output<R>(
     }
 }
 
+fn decode_output(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => text.to_string(),
+        Err(_) => encoding_rs::GBK.decode(bytes).0.to_string(),
+    }
+}
+
 fn emit_decoded(
     bytes: &[u8],
     stream: &str,
@@ -273,10 +280,7 @@ fn emit_decoded(
     callback: &OutputCallback,
     capture: &Arc<Mutex<Capture>>,
 ) {
-    let text = match std::str::from_utf8(bytes) {
-        Ok(text) => text.to_string(),
-        Err(_) => encoding_rs::GBK.decode(bytes).0.to_string(),
-    };
+    let text = decode_output(bytes);
     {
         let mut capture = capture.lock().expect("output capture mutex poisoned");
         if capture.text.len().saturating_add(text.len()) <= MAX_CAPTURE_BYTES {
@@ -434,6 +438,13 @@ mod tests {
     }
 
     #[test]
+    fn output_decoder_supports_utf8_and_gbk() {
+        assert_eq!(decode_output("中文诊断输出".as_bytes()), "中文诊断输出");
+        let (gbk, _, _) = encoding_rs::GBK.encode("中文诊断输出");
+        assert_eq!(decode_output(&gbk), "中文诊断输出");
+    }
+
+    #[test]
     fn truncation_preserves_head_and_tail() {
         let input = format!(
             "{}{}{}",
@@ -479,7 +490,7 @@ mod tests {
             streamed_clone.lock().unwrap().push_str(&output.text);
         });
         let result = execute_shell(
-            &request("cmd", "echo Harness 中文诊断输出", 10),
+            &request("cmd", "chcp 65001>nul && echo Harness 中文诊断输出", 10),
             CancellationToken::new(),
             callback,
         )
