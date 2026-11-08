@@ -3,8 +3,8 @@ dist/
 src-tauri/target/
 config.json
 data/
-skills/
-smoke/*.exe
+/skills/
+/smoke/
 .workbuddy/
 *.local
 .DS_Store
