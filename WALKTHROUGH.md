@@ -74,6 +74,7 @@ Harness 已实现为 Rust + Tauri 2 + React + TypeScript 的 Windows 中文桌�
 - 设置内容区使用固定滚动条占位，并在绘制前重置 Tab 滚动位置，避免滚动条出现/消失及滚动位置变化引起闪动。
 - 浏览器实测消息复制、输入框粘贴、普通选区复制、提示词 JSON 查看均通过；六个设置 Tab 各连续采样 8 帧，内容宽度均保持 710px，透明度为 1，滚动位置为 0。
 - 截图：`unslop/deepseek-runtime-main.png`、`unslop/deepseek-runtime-prompt.png`、`unslop/deepseek-runtime-settings.png`。
+- 原生 EXE 复验从 `http://tauri.localhost/` 加载内嵌 JS/CSS，不再依赖开发服务器；系统剪贴板写入、读取和右键粘贴通过。截图：`unslop/fixed-native-startup.png`。
 
 ## 原生事件权限与审批显示修复
 
@@ -135,11 +136,13 @@ L3 第一次允许只进入二次确认状态。后端记录 3 秒等待时间�
 pnpm tauri build --no-bundle
 ```
 
+生产 EXE 必须通过上述 Tauri 命令完整构建。不要用 `cargo build --release` 直接覆盖产物：它可能把开发地址 `localhost:1420` 编译进程序，开发服务关闭后就会显示 404 或连接被拒绝。
+
 产物：`src-tauri/target/release/harness.exe`
 
-- 大小：6,751,232 字节（6.44 MiB）
-- SHA-256：`5277B502B56578765BC3DE899785CED0130A76D988BEA076CE2CF40153F0E33E`
-- 最终 Release 构建于 2026-11-08 20:07 完成；历史干净目录启动与 Skills 释放检查见上方自动化验证
+- 大小：6,944,256 字节（6.62 MiB）
+- SHA-256：`47487EDB385B7823CBE0C09CA8BBC88D3901394F0ED1AA50136D2445F288886C`
+- 最终 Release 构建于 2026-11-08 20:18 完成；已原生启动确认内嵌页面与系统剪贴板正常，测试进程已关闭
 
 将 EXE 复制到任意可写空目录运行。首次启动应生成 `config.json`、`skills/` 和按需使用的 `data/`。应用依赖系统 WebView2；缺失时会显示中文安装提示。未签名版本可能触发 SmartScreen“未知发布者”。
 
