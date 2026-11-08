@@ -1,0 +1,10 @@
+node_modules/
+dist/
+src-tauri/target/
+config.json
+data/
+skills/
+smoke/*.exe
+.workbuddy/
+*.local
+.DS_Store

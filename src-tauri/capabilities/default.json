@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "harness-main",
+  "description": "Harness 主窗口所需的核心事件、窗口和应用能力",
+  "windows": ["main"],
+  "permissions": ["core:default", "opener:default"]
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
+  <title id="title">Harness 检查与修复</title>
+  <rect x="32" y="32" width="960" height="960" rx="216" fill="#0F6E8C"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="64" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M304 208H208v96M720 208h96v96M208 720v96h96M816 720v96h-96"/>
+    <path d="M424 326a142 142 0 0 0-142 202l-94 94a68 68 0 0 0 96 96l94-94a142 142 0 0 0 202-142l-94 94-86-86 94-94a142 142 0 0 0-76-74Z"/>
+    <path d="m526 654 72 72 150-174" stroke-width="72"/>
+  </g>
+</svg>

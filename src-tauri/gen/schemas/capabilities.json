@@ -1,0 +1,1 @@
+{"harness-main":{"identifier":"harness-main","description":"Harness 主窗口所需的核心事件、窗口和应用能力","local":true,"windows":["main"],"permissions":["core:default","opener:default"]}}
