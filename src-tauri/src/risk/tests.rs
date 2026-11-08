@@ -976,6 +976,9 @@ fn nested_bash_delete_is_l3() {
 #[test]
 fn python_module_pip_install_is_l2() {
     check("cmd", "python -m pip install requests", RiskLevel::L2);
+    check("python", "python -m pip install requests", RiskLevel::L2);
+    check("python", "python -m pip list", RiskLevel::L0);
+    check("python", "python -m pip --version", RiskLevel::L0);
 }
 
 #[test]

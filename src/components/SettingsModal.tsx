@@ -410,7 +410,7 @@ export default function SettingsModal() {
                     </div>
                     <span className="runtime-status">{pluginCatalog?.python.available ? "可用" : "不可用"}</span>
                   </div>
-                  <p className="runtime-priority"><Blocks size={16} />存在可用的内置 Python 插件时，所有 Python 代码都优先通过该插件执行。</p>
+                  <p className="runtime-priority"><Blocks size={16} />内置插件优先执行；其临时运行时、pip 包与缓存仅保留在本次会话，退出时清理。</p>
                   <div className="skills-list plugin-list">
                     {!pluginCatalog && <p className="muted-empty">正在读取插件清单…</p>}
                     {pluginCatalog?.plugins.length === 0 && <p className="muted-empty">未检测到运行时插件。可将受信任的 python.dll 放入应用目录并重启。</p>}

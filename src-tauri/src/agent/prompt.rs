@@ -17,7 +17,7 @@ fn python_prompt(shells: &[String]) -> Option<String> {
         return None;
     }
     if plugins::launch("python").is_some() {
-        Some("Python 代码统一通过 run_command 的 shell=python 执行。当前由内置 Python 插件提供运行时；只要该插件可用，就必须优先使用它，不要改用便携或系统 Python。".to_string())
+        Some("Python 代码统一通过 run_command 的 shell=python 执行。当前由内置 Python 插件提供运行时；只要该插件可用，就必须优先使用它，不要改用便携或系统 Python。需要 pip 时，在 command 中直接填写 python -m pip ...，该形式会作为 pip 命令而非 Python 源码执行；只可按需安装可信来源的包。包、缓存和临时运行时仅本次会话有效，应用退出后会删除，不要声称安装结果会跨重启保留。".to_string())
     } else {
         Some("Python 代码统一通过 run_command 的 shell=python 执行。当前未检测到可用的内置 Python 插件，使用便携或系统 Python 运行时。".to_string())
     }

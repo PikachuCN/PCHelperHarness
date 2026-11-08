@@ -97,11 +97,25 @@ pub(crate) async fn execute_fixed_shell(
                 Ok(launch) => launch,
                 Err(error) => return ToolResult::error(request, error),
             };
-            let mut process = match external_process(command, &launch, &mut temporary_script) {
+            let mut process = match python_process(command, &launch, &mut temporary_script) {
                 Ok(process) => process,
                 Err(error) => return ToolResult::error(request, error),
             };
             process.env("PYTHONIOENCODING", "utf-8");
+            process.env("PIP_DISABLE_PIP_VERSION_CHECK", "1");
+            if matches!(
+                super::python::status().source,
+                Some(super::python::PythonRuntimeSource::Plugin)
+            ) {
+                if let Some(directory) = launch
+                    .program
+                    .parent()
+                    .filter(|directory| directory.is_absolute())
+                {
+                    process.env("PIP_CACHE_DIR", directory.join("pip-cache"));
+                    process.env("PYTHONUSERBASE", directory.join("user"));
+                }
+            }
             process
         }
         other => {
@@ -296,6 +310,65 @@ fn emit_decoded(
     });
 }
 
+fn python_process(
+    command: &str,
+    launch: &PluginLaunch,
+    temporary_script: &mut Option<tempfile::NamedTempFile>,
+) -> Result<Command, String> {
+    if let Some(arguments) = parse_python_pip(command) {
+        let mut process = Command::new(&launch.program);
+        process.args(&launch.base_args);
+        process.args(arguments);
+        return Ok(process);
+    }
+    external_process(command, launch, temporary_script)
+}
+
+fn parse_python_pip(command: &str) -> Option<Vec<String>> {
+    let tokens = split_pip_arguments(command);
+    if tokens.len() < 3
+        || !matches!(tokens[0].as_str(), "python" | "python.exe")
+        || tokens[1] != "-m"
+        || tokens[2] != "pip"
+    {
+        return None;
+    }
+    Some(tokens.into_iter().skip(1).collect())
+}
+
+fn split_pip_arguments(command: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+    let mut chars = command.chars().peekable();
+    while let Some(character) = chars.next() {
+        if let Some(active_quote) = quote {
+            if character == active_quote {
+                quote = None;
+            } else if character == '\\'
+                && active_quote == '"'
+                && matches!(chars.peek(), Some('"' | '\\'))
+            {
+                current.push(chars.next().unwrap_or(character));
+            } else {
+                current.push(character);
+            }
+        } else if matches!(character, '\'' | '"') {
+            quote = Some(character);
+        } else if character.is_whitespace() {
+            if !current.is_empty() {
+                tokens.push(std::mem::take(&mut current));
+            }
+        } else {
+            current.push(character);
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
+
 fn external_process(
     command: &str,
     launch: &PluginLaunch,
@@ -435,6 +508,30 @@ mod tests {
     #[test]
     fn powershell_encoding_is_utf16le_base64() {
         assert_eq!(encode_powershell("A"), "QQA=");
+    }
+
+    #[test]
+    fn python_pip_command_is_converted_to_direct_arguments() {
+        let arguments =
+            parse_python_pip("python -m pip install --target \"D:\\tmp path\\packages\" requests")
+                .unwrap();
+        assert_eq!(
+            arguments,
+            [
+                "-m",
+                "pip",
+                "install",
+                "--target",
+                "D:\\tmp path\\packages",
+                "requests"
+            ]
+        );
+    }
+
+    #[test]
+    fn python_source_is_not_mistaken_for_pip_command() {
+        assert!(parse_python_pip("print('python -m pip install requests')").is_none());
+        assert!(parse_python_pip("python_version = '3.13'").is_none());
     }
 
     #[test]

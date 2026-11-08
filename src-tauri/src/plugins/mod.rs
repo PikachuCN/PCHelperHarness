@@ -11,6 +11,7 @@ type ApiVersionFn = unsafe extern "C" fn() -> u32;
 type ManifestFn = unsafe extern "C" fn() -> *const c_char;
 type PrepareFn = unsafe extern "C" fn(*const c_char) -> *mut c_char;
 type FreeStringFn = unsafe extern "C" fn(*mut c_char);
+type CleanupFn = unsafe extern "C" fn();
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(tag = "mode", rename_all = "snake_case")]
@@ -61,6 +62,7 @@ struct LoadedPlugin {
     manifest: PluginManifest,
     launch: PluginLaunch,
     path: PathBuf,
+    cleanup: Option<CleanupFn>,
     _library: Library,
 }
 
@@ -113,6 +115,16 @@ pub(crate) fn launch(shell: &str) -> Option<PluginLaunch> {
         .iter()
         .find(|plugin| plugin.manifest.shell == shell)
         .map(|plugin| plugin.launch.clone())
+}
+
+pub fn cleanup() {
+    for plugin in plugins() {
+        if let Some(cleanup) = plugin.cleanup {
+            // SAFETY: cleanup is an optional ABI v1 export loaded from the same
+            // library that remains alive for the entire application lifetime.
+            unsafe { cleanup() };
+        }
+    }
 }
 
 fn plugins() -> &'static [LoadedPlugin] {
@@ -223,6 +235,9 @@ fn load_plugin(path: &Path) -> Result<Option<LoadedPlugin>, String> {
         .map_err(|error| format!("缺少 prepare 导出：{error}"))?;
     let free_string_fn = unsafe { library.get::<FreeStringFn>(b"harness_plugin_free_string\0") }
         .map_err(|error| format!("缺少 free_string 导出：{error}"))?;
+    let cleanup = unsafe { library.get::<CleanupFn>(b"harness_plugin_cleanup\0") }
+        .ok()
+        .map(|symbol| *symbol);
 
     let manifest_text = unsafe { read_static_json(manifest_fn()) }?;
     let manifest: PluginManifest = serde_json::from_str(&manifest_text)
@@ -259,6 +274,7 @@ fn load_plugin(path: &Path) -> Result<Option<LoadedPlugin>, String> {
         },
         manifest,
         path: path.to_path_buf(),
+        cleanup,
         _library: library,
     }))
 }
@@ -391,12 +407,35 @@ mod tests {
         std::fs::copy(&path, test_directory.join("python.dll")).unwrap();
         let prompt = crate::agent::prompt::system_prompt();
         assert!(
-            prompt.contains("Python 3.13.17（shell=python）"),
+            prompt.contains("Python 3.13.17 + pip 26.2.1（shell=python）"),
             "{prompt}"
         );
         assert!(crate::tools::available_shells()
             .iter()
             .any(|shell| shell == "python"));
+
+        let risk = crate::risk::classify("python", "python -m pip --version", None);
+        assert_eq!(risk.level, crate::risk::RiskLevel::L0);
+        let request = crate::tools::ToolRequest {
+            id: "python-pip-test".to_string(),
+            name: "run_command".to_string(),
+            arguments: serde_json::json!({
+                "shell": "python",
+                "command": "python -m pip --version",
+                "explanation_zh": "验证插件 pip 命令入口",
+                "risk_self": "l0"
+            }),
+            risk,
+        };
+        let pip = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(crate::tools::execute(
+                request,
+                tokio_util::sync::CancellationToken::new(),
+                std::sync::Arc::new(|_| {}),
+            ));
+        assert_eq!(pip.exit_code, Some(0), "{}", pip.content);
+        assert!(pip.content.contains("pip 26.2.1"), "{}", pip.content);
 
         let output = std::process::Command::new(&loaded.launch.program)
             .args(&loaded.launch.base_args)
@@ -409,5 +448,19 @@ mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
         assert!(String::from_utf8_lossy(&output.stdout).contains("DLL 插件运行正常"));
+
+        let local_runtime = loaded.launch.program.parent().unwrap().to_path_buf();
+        let global_runtime = crate::plugins::launch("python")
+            .unwrap()
+            .program
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        if let Some(cleanup) = loaded.cleanup {
+            unsafe { cleanup() };
+        }
+        crate::plugins::cleanup();
+        assert!(!local_runtime.exists());
+        assert!(!global_runtime.exists());
     }
 }

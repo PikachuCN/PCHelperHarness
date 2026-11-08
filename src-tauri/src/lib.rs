@@ -452,7 +452,7 @@ pub fn run() {
         .find_map(|args| (args[0] == "--resume").then(|| args[1].clone()));
     let location = config::config_location();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState {
@@ -506,6 +506,12 @@ pub fn run() {
             get_env_info,
             restart_as_admin,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Harness");
+        .build(tauri::generate_context!())
+        .expect("error while building Harness");
+
+    app.run(|_, event| {
+        if matches!(event, tauri::RunEvent::Exit) {
+            plugins::cleanup();
+        }
+    });
 }

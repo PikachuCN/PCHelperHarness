@@ -1370,7 +1370,16 @@ fn classify_package_manager(manager: &str, args: &[String]) -> RuleMatch {
     let action = subcommand_index
         .and_then(|index| args.get(index))
         .map(|value| value.to_ascii_lowercase())
-        .unwrap_or_default();
+        .unwrap_or_else(|| {
+            if args
+                .iter()
+                .any(|arg| matches!(arg.as_str(), "--version" | "-v"))
+            {
+                "--version".to_string()
+            } else {
+                String::new()
+            }
+        });
     let package = subcommand_index.and_then(|index| {
         args[index + 1..]
             .iter()

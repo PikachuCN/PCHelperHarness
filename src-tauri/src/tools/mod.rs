@@ -63,10 +63,15 @@ fn tool_definitions_for(
         "type": "string",
         "description": "用简明中文解释这一步要做什么，以及为什么需要执行"
     });
-    let command_description = format!(
+    let mut command_description = format!(
         "在本机通过可用 shell（{}）执行命令。命令必须是非交互式的。",
         shells.join("、")
     );
+    if shells.iter().any(|shell| shell == "python") {
+        command_description.push_str(
+            " shell=python 默认执行 Python 源码；安装或查询 pip 包时，command 使用 python -m pip ... 形式。",
+        );
+    }
     let mut definitions = vec![
         (
             "run_command",
