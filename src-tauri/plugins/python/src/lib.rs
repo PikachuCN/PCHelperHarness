@@ -414,6 +414,7 @@ mod tests {
                 "-c",
                 "import sys; print(sys.version); print('DLL 内嵌运行时正常')",
             ])
+            .env("PYTHONIOENCODING", "utf-8")
             .output()
             .unwrap();
         assert!(
