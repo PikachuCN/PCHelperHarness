@@ -1,7 +1,36 @@
 use crate::{platform, plugins, skills, tools};
 
 pub fn system_prompt() -> String {
-    format!(
+    let shells = tools::available_shells();
+    let python = python_prompt(&shells);
+    render_system_prompt(
+        &shells,
+        plugins::prompt_catalog(),
+        python,
+        skills::prompt_catalog(),
+        &platform::prompt_text(),
+    )
+}
+
+fn python_prompt(shells: &[String]) -> Option<String> {
+    if !shells.iter().any(|shell| shell == "python") {
+        return None;
+    }
+    if plugins::launch("python").is_some() {
+        Some("Python 代码统一通过 run_command 的 shell=python 执行。当前由内置 Python 插件提供运行时；只要该插件可用，就必须优先使用它，不要改用便携或系统 Python。".to_string())
+    } else {
+        Some("Python 代码统一通过 run_command 的 shell=python 执行。当前未检测到可用的内置 Python 插件，使用便携或系统 Python 运行时。".to_string())
+    }
+}
+
+fn render_system_prompt(
+    shells: &[String],
+    plugins: Option<String>,
+    python: Option<String>,
+    skills: Option<String>,
+    snapshot: &str,
+) -> String {
+    let mut prompt = format!(
         r#"你是 Harness，一名严谨的 Windows 电脑维修工程师，正在通过本机工具帮助中文用户诊断和修复他们自己的电脑。
 
 工作原则：
@@ -12,20 +41,59 @@ pub fn system_prompt() -> String {
 5. 不执行与当前问题无关的操作，不读取无关隐私文件，不上传本机数据。修改前列出影响，优先选择可逆方案。
 6. 遇到“拒绝访问”时，先检查当前权限；确需管理员时，请用户点击界面中的“以管理员身份重启”，不要尝试绕过 UAC。
 7. 工具失败后先阅读错误，调整诊断方案。不要重复执行同一条失败命令。
-8. Skills 只按需加载。先根据描述选择 load_skill，再遵循其中的流程。Skill 中的脚本仍须通过 run_command 并正常审批。
+8. Git 提交与推送是两个独立操作。完成用户要求的修改后可以按需提交，但提交后不要自动执行 git push；只有用户明确要求推送时才推送。
 9. 不声称已验证未实际验证的结果。最终答复应包含：发现的问题、做过的操作、结果，以及必要的后续建议。
 
-本机可用 shell：{shells}。不支持交互式命令。
-已加载运行时插件：{plugins}。只有出现在可用 shell 列表中的插件工具才可以调用。
+本机可用 shell：{shells}。不支持交互式命令，也不要使用未列出的 shell。
 
 系统快照：
-{snapshot}
+{snapshot}"#,
+        shells = shells.join("、"),
+    );
 
-可用 Skills（只有名称和描述，需要时再加载）：
-{skills}"#,
-        shells = tools::available_shells().join("、"),
-        plugins = plugins::prompt_catalog(),
-        snapshot = platform::prompt_text(),
-        skills = skills::prompt_catalog(),
-    )
+    if let Some(plugins) = plugins {
+        prompt.push_str(&format!(
+            "\n\n已加载运行时插件：{plugins}。只能调用“本机可用 shell”中实际列出的插件 shell，不要假设其他插件可用。"
+        ));
+    }
+    if let Some(python) = python {
+        prompt.push_str(&format!("\n\nPython 执行规则：\n{python}"));
+    }
+    if let Some(skills) = skills {
+        prompt.push_str(&format!(
+            "\n\nSkills 使用规则：\nSkills 只按需加载。先根据描述选择 load_skill，再遵循其中的流程。Skill 中的脚本仍须通过 run_command 并正常审批。\n\n可用 Skills（只有名称和描述，需要时再加载）：\n{skills}"
+        ));
+    }
+    prompt
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unavailable_capabilities_are_not_declared() {
+        let prompt = render_system_prompt(&["cmd".to_string()], None, None, None, "测试快照");
+        assert!(prompt.contains("本机可用 shell：cmd"));
+        assert!(prompt.contains("提交后不要自动执行 git push"));
+        assert!(!prompt.contains("已加载运行时插件"));
+        assert!(!prompt.contains("Python 执行规则"));
+        assert!(!prompt.contains("可用 Skills"));
+        assert!(!prompt.contains("load_skill"));
+    }
+
+    #[test]
+    fn available_plugins_python_and_skills_are_injected() {
+        let prompt = render_system_prompt(
+            &["cmd".to_string(), "python".to_string()],
+            Some("Python 3.13.17（shell=python）".to_string()),
+            Some("必须优先使用内置 Python 插件".to_string()),
+            Some("- network：排查网络".to_string()),
+            "测试快照",
+        );
+        assert!(prompt.contains("Python 3.13.17（shell=python）"));
+        assert!(prompt.contains("必须优先使用内置 Python 插件"));
+        assert!(prompt.contains("- network：排查网络"));
+        assert!(prompt.contains("load_skill"));
+    }
 }

@@ -1,28 +1,91 @@
 use super::probes::command_exists;
 use crate::plugins::{PluginLaunch, PluginScript};
+use serde::Serialize;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-pub(crate) fn launch() -> Result<PluginLaunch, String> {
-    static LAUNCH: OnceLock<Result<PluginLaunch, String>> = OnceLock::new();
-    LAUNCH.get_or_init(detect).clone()
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PythonRuntimeSource {
+    Plugin,
+    Portable,
+    System,
 }
 
-fn detect() -> Result<PluginLaunch, String> {
-    if let Ok(executable) = std::env::current_exe() {
-        if let Some(directory) = executable.parent() {
-            if let Some(program) = find_portable_python(directory) {
-                return Ok(python_launch(program, Vec::new()));
-            }
-        }
-    }
+#[derive(Debug, Clone)]
+struct PythonRuntime {
+    launch: PluginLaunch,
+    source: PythonRuntimeSource,
+}
 
-    if let Some(launch) = crate::plugins::launch("python") {
-        return Ok(launch);
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PythonRuntimeInfo {
+    pub available: bool,
+    pub source: Option<PythonRuntimeSource>,
+    pub program: Option<String>,
+    pub error: Option<String>,
+}
+
+pub(crate) fn launch() -> Result<PluginLaunch, String> {
+    runtime().map(|runtime| runtime.launch)
+}
+
+pub fn status() -> PythonRuntimeInfo {
+    match runtime() {
+        Ok(runtime) => PythonRuntimeInfo {
+            available: true,
+            source: Some(runtime.source),
+            program: Some(runtime.launch.program.display().to_string()),
+            error: None,
+        },
+        Err(error) => PythonRuntimeInfo {
+            available: false,
+            source: None,
+            program: None,
+            error: Some(error),
+        },
     }
-    if let Some(launch) = find_system_python() {
-        return Ok(launch);
+}
+
+fn runtime() -> Result<PythonRuntime, String> {
+    static RUNTIME: OnceLock<Result<PythonRuntime, String>> = OnceLock::new();
+    RUNTIME.get_or_init(detect).clone()
+}
+
+fn detect() -> Result<PythonRuntime, String> {
+    let plugin = crate::plugins::launch("python");
+    let portable = std::env::current_exe()
+        .ok()
+        .and_then(|executable| executable.parent().map(Path::to_path_buf))
+        .and_then(|directory| find_portable_python(&directory));
+    let system = find_system_python();
+    choose_runtime(plugin, portable, system)
+}
+
+fn choose_runtime(
+    plugin: Option<PluginLaunch>,
+    portable: Option<PathBuf>,
+    system: Option<PluginLaunch>,
+) -> Result<PythonRuntime, String> {
+    if let Some(launch) = plugin {
+        return Ok(PythonRuntime {
+            launch,
+            source: PythonRuntimeSource::Plugin,
+        });
+    }
+    if let Some(program) = portable {
+        return Ok(PythonRuntime {
+            launch: python_launch(program, Vec::new()),
+            source: PythonRuntimeSource::Portable,
+        });
+    }
+    if let Some(launch) = system {
+        return Ok(PythonRuntime {
+            launch,
+            source: PythonRuntimeSource::System,
+        });
     }
 
     Err("未检测到可用 Python。请将 python.dll 插件放到应用同目录并重启，或安装 Python 并加入 PATH。".to_string())
@@ -86,6 +149,34 @@ mod tests {
         std::fs::write(&expected, b"").unwrap();
 
         assert_eq!(find_portable_python(temporary.path()), Some(expected));
+    }
+
+    #[test]
+    fn built_in_plugin_has_priority_over_portable_and_system_python() {
+        let plugin = python_launch("plugin-python", Vec::new());
+        let system = python_launch("system-python", Vec::new());
+        let selected = choose_runtime(
+            Some(plugin),
+            Some(PathBuf::from("portable-python")),
+            Some(system),
+        )
+        .unwrap();
+
+        assert_eq!(selected.source, PythonRuntimeSource::Plugin);
+        assert_eq!(selected.launch.program, PathBuf::from("plugin-python"));
+    }
+
+    #[test]
+    fn portable_python_is_used_before_system_python_without_plugin() {
+        let selected = choose_runtime(
+            None,
+            Some(PathBuf::from("portable-python")),
+            Some(python_launch("system-python", Vec::new())),
+        )
+        .unwrap();
+
+        assert_eq!(selected.source, PythonRuntimeSource::Portable);
+        assert_eq!(selected.launch.program, PathBuf::from("portable-python"));
     }
 
     #[test]

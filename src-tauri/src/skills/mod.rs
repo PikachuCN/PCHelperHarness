@@ -134,15 +134,20 @@ pub fn list() -> Result<Vec<SkillMeta>, SkillError> {
     Ok(skills)
 }
 
-pub fn prompt_catalog() -> String {
+pub fn prompt_catalog() -> Option<String> {
     match list() {
-        Ok(skills) if skills.is_empty() => "（暂无可用 Skills）".to_string(),
-        Ok(skills) => skills
-            .into_iter()
-            .map(|skill| format!("- {}：{}", skill.name, skill.description))
-            .collect::<Vec<_>>()
-            .join("\n"),
-        Err(error) => format!("（Skills 加载失败：{error}）"),
+        Ok(skills) if skills.is_empty() => None,
+        Ok(skills) => Some(
+            skills
+                .into_iter()
+                .map(|skill| format!("- {}：{}", skill.name, skill.description))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+        Err(error) => {
+            eprintln!("Skills 加载失败，不注入相关提示词：{error}");
+            None
+        }
     }
 }
 
@@ -251,7 +256,7 @@ mod tests {
             path.components()
                 .any(|part| !matches!(part, Component::Normal(_)))
         });
-        assert_eq!(result.unwrap(), true);
+        assert!(result.unwrap());
     }
 
     #[test]

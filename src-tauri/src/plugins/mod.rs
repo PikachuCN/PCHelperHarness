@@ -1,5 +1,5 @@
 use libloading::Library;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::ffi::{c_char, CStr, CString, OsString};
 use std::path::{Path, PathBuf};
@@ -26,6 +26,18 @@ pub(crate) struct PluginLaunch {
     pub script: PluginScript,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginInfo {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub shell: String,
+    pub path: String,
+    pub status: String,
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PluginManifest {
@@ -48,7 +60,14 @@ struct PrepareResult {
 struct LoadedPlugin {
     manifest: PluginManifest,
     launch: PluginLaunch,
+    path: PathBuf,
     _library: Library,
+}
+
+#[derive(Default)]
+struct PluginRegistry {
+    loaded: Vec<LoadedPlugin>,
+    issues: Vec<PluginInfo>,
 }
 
 pub(crate) fn shell_names() -> Vec<String> {
@@ -62,7 +81,21 @@ pub(crate) fn shell_names() -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn prompt_catalog() -> String {
+pub fn list() -> Vec<PluginInfo> {
+    let registry = registry();
+    let loaded = registry.loaded.iter().map(|plugin| PluginInfo {
+        id: plugin.manifest.id.clone(),
+        name: plugin.manifest.name.clone(),
+        version: plugin.manifest.version.clone(),
+        shell: plugin.manifest.shell.clone(),
+        path: plugin.path.display().to_string(),
+        status: "ready".to_string(),
+        error: None,
+    });
+    loaded.chain(registry.issues.iter().cloned()).collect()
+}
+
+pub(crate) fn prompt_catalog() -> Option<String> {
     let descriptions = plugins()
         .iter()
         .map(|plugin| {
@@ -72,11 +105,7 @@ pub(crate) fn prompt_catalog() -> String {
             )
         })
         .collect::<Vec<_>>();
-    if descriptions.is_empty() {
-        "无".to_string()
-    } else {
-        descriptions.join("；")
-    }
+    (!descriptions.is_empty()).then(|| descriptions.join("；"))
 }
 
 pub(crate) fn launch(shell: &str) -> Option<PluginLaunch> {
@@ -87,40 +116,76 @@ pub(crate) fn launch(shell: &str) -> Option<PluginLaunch> {
 }
 
 fn plugins() -> &'static [LoadedPlugin] {
-    static PLUGINS: OnceLock<Vec<LoadedPlugin>> = OnceLock::new();
-    PLUGINS.get_or_init(load_plugins)
+    &registry().loaded
 }
 
-fn load_plugins() -> Vec<LoadedPlugin> {
+fn registry() -> &'static PluginRegistry {
+    static REGISTRY: OnceLock<PluginRegistry> = OnceLock::new();
+    REGISTRY.get_or_init(load_plugins)
+}
+
+fn load_plugins() -> PluginRegistry {
+    let mut registry = PluginRegistry::default();
     let mut paths = match plugin_paths() {
         Ok(paths) => paths,
         Err(error) => {
             eprintln!("插件目录读取失败：{error}");
-            return Vec::new();
+            registry.issues.push(PluginInfo {
+                id: "plugin-directory".to_string(),
+                name: "插件目录".to_string(),
+                version: String::new(),
+                shell: String::new(),
+                path: directory()
+                    .map_or_else(|_| "未知".to_string(), |path| path.display().to_string()),
+                status: "error".to_string(),
+                error: Some(error),
+            });
+            return registry;
         }
     };
     paths.sort();
-    paths
-        .iter()
-        .filter_map(|path| match load_plugin(path) {
+    for path in paths {
+        match load_plugin(&path) {
             Ok(Some(plugin)) => {
                 eprintln!("已加载运行时插件：{}", path.display());
-                Some(plugin)
+                registry.loaded.push(plugin);
             }
-            Ok(None) => None,
+            Ok(None) => {}
             Err(error) => {
                 eprintln!("插件 {} 加载失败：{error}", path.display());
-                None
+                registry.issues.push(PluginInfo {
+                    id: path
+                        .file_stem()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string(),
+                    name: path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string(),
+                    version: String::new(),
+                    shell: String::new(),
+                    path: path.display().to_string(),
+                    status: "error".to_string(),
+                    error: Some(error),
+                });
             }
-        })
-        .collect()
+        }
+    }
+    registry
+}
+
+pub fn directory() -> Result<PathBuf, String> {
+    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+    executable
+        .parent()
+        .map(Path::to_path_buf)
+        .ok_or_else(|| "无法确定应用目录".to_string())
 }
 
 fn plugin_paths() -> Result<Vec<PathBuf>, String> {
-    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-    let directory = executable
-        .parent()
-        .ok_or_else(|| "无法确定应用目录".to_string())?;
+    let directory = directory()?;
     let mut paths = Vec::new();
     for entry in std::fs::read_dir(directory).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
@@ -193,6 +258,7 @@ fn load_plugin(path: &Path) -> Result<Option<LoadedPlugin>, String> {
             script: manifest.script.clone(),
         },
         manifest,
+        path: path.to_path_buf(),
         _library: library,
     }))
 }

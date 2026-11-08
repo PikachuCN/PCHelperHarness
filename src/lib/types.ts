@@ -121,6 +121,29 @@ export interface SkillInfo {
   path: string;
 }
 
+export interface PluginInfo {
+  id: string;
+  name: string;
+  version: string;
+  shell: string;
+  path: string;
+  status: "ready" | "error";
+  error: string | null;
+}
+
+export interface PythonRuntimeInfo {
+  available: boolean;
+  source: "plugin" | "portable" | "system" | null;
+  program: string | null;
+  error: string | null;
+}
+
+export interface PluginCatalog {
+  plugins: PluginInfo[];
+  python: PythonRuntimeInfo;
+  directory: string;
+}
+
 export interface EnvInfo {
   isAdmin: boolean;
   osVersion: string;
@@ -278,6 +301,8 @@ export interface IpcCommandMap {
   test_provider: { args: { provider: ProviderConfig }; result: ModelTestResult };
   list_skills: { args: Record<string, never>; result: SkillInfo[] };
   reload_skills: { args: Record<string, never>; result: SkillInfo[] };
+  get_plugin_catalog: { args: Record<string, never>; result: PluginCatalog };
+  open_plugin_dir: { args: Record<string, never>; result: void };
   open_skills_dir: { args: Record<string, never>; result: void };
   open_config_dir: { args: Record<string, never>; result: void };
   get_env_info: { args: Record<string, never>; result: EnvInfo };

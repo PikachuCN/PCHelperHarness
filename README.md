@@ -16,6 +16,7 @@ Harness 是一款基于 **Rust + Tauri 2 + React + TypeScript** 的 Windows 中�
 - **会话管理**：新建、重命名、删除、恢复和导出 Markdown；可复制消息并查看用户消息对应的实际提示词。
 - **中文桌面界面**：提供浅色/深色主题、工具状态卡片、内嵌审批、实时运行状态和应用内右键菜单。
 - **内置 Skills**：包含网络排查、磁盘清理、蓝屏分析、开机缓慢、打印机和用户权限六类维修流程。
+- **插件状态与动态提示词**：设置页可检查运行时插件、加载错误和 Python 来源；系统提示词及工具定义会随实际可用的插件和 Skills 调整。
 
 ## 安全设计
 
@@ -127,11 +128,11 @@ src-tauri/target/release/python.dll
 
 `python.dll` 是可选的本机运行时插件。主程序只会向模型暴露实际可用的 shell；未检测到 Python 插件或运行时时，不会声明 Python 工具可用。
 
-Python 按以下顺序解析：
+Python 按以下顺序解析，存在可用的内置 DLL 插件时始终优先使用插件：
 
-1. 应用同级 `python/python.exe`
-2. 应用同级 `python.exe`
-3. DLL 插件提供的运行时
+1. DLL 插件提供的运行时
+2. 应用同级 `python/python.exe`
+3. 应用同级 `python.exe`
 4. 系统 `PATH` 中的 `python`、`py -3` 或 `python3`
 
 DLL 具有完整本机代码权限，只应使用来源可信的插件。

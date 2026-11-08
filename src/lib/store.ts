@@ -9,6 +9,7 @@ import type {
   HarnessEventMap,
   HarnessEventName,
   PendingApproval,
+  PluginCatalog,
   RiskAssessment,
   SessionSummary,
   SkillInfo,
@@ -37,6 +38,7 @@ interface HarnessState {
   config: AppConfig | null;
   envInfo: EnvInfo | null;
   skills: SkillInfo[];
+  pluginCatalog: PluginCatalog | null;
   sidebarCollapsed: boolean;
   settingsOpen: boolean;
   selectedModel: string;
@@ -63,6 +65,7 @@ interface HarnessState {
   setApprovalMode: (mode: ApprovalMode) => void;
   saveConfig: (config: AppConfig) => Promise<boolean>;
   loadSkills: (reload?: boolean) => Promise<SkillInfo[]>;
+  loadPluginCatalog: () => Promise<PluginCatalog | null>;
   restartAsAdmin: () => Promise<void>;
   handleEvent: <K extends HarnessEventName>(event: K, payload: HarnessEventMap[K]) => void;
   notify: (message: string, tone?: ToastState["tone"]) => void;
@@ -187,6 +190,7 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   config: null,
   envInfo: null,
   skills: [],
+  pluginCatalog: null,
   sidebarCollapsed: false,
   settingsOpen: false,
   selectedModel: "",
@@ -197,11 +201,12 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   activity: null,
 
   initialize: async () => {
-    const [configResult, sessionsResult, envResult, skillsResult] = await Promise.allSettled([
+    const [configResult, sessionsResult, envResult, skillsResult, pluginResult] = await Promise.allSettled([
       ipcInvoke("get_config", {}),
       ipcInvoke("list_sessions", {}),
       ipcInvoke("get_env_info", {}),
       ipcInvoke("list_skills", {}),
+      ipcInvoke("get_plugin_catalog", {}),
     ]);
     if (configResult.status === "fulfilled") {
       const config = configResult.value;
@@ -219,6 +224,8 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
       }
     }
     if (skillsResult.status === "fulfilled") set({ skills: skillsResult.value });
+    if (pluginResult.status === "fulfilled") set({ pluginCatalog: pluginResult.value });
+    else get().notify(`读取插件状态失败：${String(pluginResult.reason)}`, "error");
     set({ initialized: true });
     const resumeSessionId = envResult.status === "fulfilled" ? envResult.value.resumeSessionId : null;
     if (resumeSessionId) await get().selectSession(resumeSessionId);
@@ -468,6 +475,17 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
     } catch (error) {
       get().notify(`读取 Skills 失败：${String(error)}`, "error");
       return get().skills;
+    }
+  },
+
+  loadPluginCatalog: async () => {
+    try {
+      const pluginCatalog = await ipcInvoke("get_plugin_catalog", {});
+      set({ pluginCatalog });
+      return pluginCatalog;
+    } catch (error) {
+      get().notify(`读取插件状态失败：${String(error)}`, "error");
+      return get().pluginCatalog;
     }
   },
 

@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 pub use probes::{available_shells, execute_probe};
+pub use python::{status as python_status, PythonRuntimeInfo, PythonRuntimeSource};
 pub use shell::{execute_shell, truncate_for_model};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,6 +46,16 @@ pub struct ToolOutput {
 pub type OutputCallback = Arc<dyn Fn(ToolOutput) + Send + Sync>;
 
 pub fn tool_definitions() -> Vec<crate::llm::ToolDefinition> {
+    let skills_available = crate::skills::list()
+        .map(|skills| !skills.is_empty())
+        .unwrap_or(false);
+    tool_definitions_for(available_shells(), skills_available)
+}
+
+fn tool_definitions_for(
+    shells: Vec<String>,
+    skills_available: bool,
+) -> Vec<crate::llm::ToolDefinition> {
     use crate::llm::{FunctionDefinition, ToolDefinition};
     use serde_json::json;
 
@@ -52,12 +63,11 @@ pub fn tool_definitions() -> Vec<crate::llm::ToolDefinition> {
         "type": "string",
         "description": "用简明中文解释这一步要做什么，以及为什么需要执行"
     });
-    let shells = available_shells();
     let command_description = format!(
         "在本机通过可用 shell（{}）执行命令。命令必须是非交互式的。",
         shells.join("、")
     );
-    let definitions = vec![
+    let mut definitions = vec![
         (
             "run_command",
             command_description.as_str(),
@@ -128,21 +138,26 @@ pub fn tool_definitions() -> Vec<crate::llm::ToolDefinition> {
                 "type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"},"append":{"type":"boolean"},"explanation_zh":explanation},"required":["path","content","explanation_zh"]
             }),
         ),
-        (
-            "load_skill",
-            "按需加载指定维修 Skill 的完整说明和文件清单",
-            json!({
-                "type":"object","properties":{"name":{"type":"string"}},"required":["name"]
-            }),
-        ),
-        (
-            "read_skill_file",
-            "读取已加载 Skill 目录中的附带文本文件",
-            json!({
-                "type":"object","properties":{"name":{"type":"string"},"path":{"type":"string"}},"required":["name","path"]
-            }),
-        ),
     ];
+
+    if skills_available {
+        definitions.extend([
+            (
+                "load_skill",
+                "按需加载指定维修 Skill 的完整说明和文件清单",
+                json!({
+                    "type":"object","properties":{"name":{"type":"string"}},"required":["name"]
+                }),
+            ),
+            (
+                "read_skill_file",
+                "读取已加载 Skill 目录中的附带文本文件",
+                json!({
+                    "type":"object","properties":{"name":{"type":"string"},"path":{"type":"string"}},"required":["name","path"]
+                }),
+            ),
+        ]);
+    }
 
     definitions
         .into_iter()
@@ -192,5 +207,41 @@ impl ToolResult {
             truncated: false,
             risk: request.risk.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skill_tools_are_exposed_only_when_skills_exist() {
+        let without_skills = tool_definitions_for(vec!["cmd".to_string()], false);
+        assert!(without_skills.iter().all(|tool| !matches!(
+            tool.function.name.as_str(),
+            "load_skill" | "read_skill_file"
+        )));
+
+        let with_skills = tool_definitions_for(vec!["cmd".to_string()], true);
+        assert!(with_skills
+            .iter()
+            .any(|tool| tool.function.name == "load_skill"));
+        assert!(with_skills
+            .iter()
+            .any(|tool| tool.function.name == "read_skill_file"));
+    }
+
+    #[test]
+    fn command_tool_only_lists_detected_shells() {
+        let definitions =
+            tool_definitions_for(vec!["cmd".to_string(), "python".to_string()], false);
+        let command = definitions
+            .iter()
+            .find(|tool| tool.function.name == "run_command")
+            .unwrap();
+        assert_eq!(
+            command.function.parameters["properties"]["shell"]["enum"],
+            serde_json::json!(["cmd", "python"])
+        );
     }
 }

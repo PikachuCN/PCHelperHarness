@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
+  Blocks,
   Check,
   ChevronRight,
   CircleCheck,
@@ -33,16 +34,23 @@ import type { AppConfig, ModelTestResult, ProviderConfig } from "../lib/types";
 import { ConfirmDialog, IconButton } from "./Controls";
 import SelectControl from "./SelectControl";
 
-type SectionId = "interface" | "approval" | "skills" | "appearance" | "security" | "about";
+type SectionId = "interface" | "approval" | "skills" | "plugins" | "appearance" | "security" | "about";
 
 const sections: { id: SectionId; label: string; icon: typeof Server }[] = [
   { id: "interface", label: "接口", icon: Server },
   { id: "approval", label: "审批", icon: ShieldCheck },
   { id: "skills", label: "Skills", icon: Puzzle },
+  { id: "plugins", label: "插件", icon: Blocks },
   { id: "appearance", label: "外观", icon: Palette },
   { id: "security", label: "安全与存储", icon: Database },
   { id: "about", label: "关于", icon: Info },
 ];
+
+const pythonSourceLabels = {
+  plugin: "内置 Python 插件（优先）",
+  portable: "应用便携 Python",
+  system: "系统 Python",
+} as const;
 
 function Toggle({ checked, onChange, label, description }: { checked: boolean; onChange: (checked: boolean) => void; label: string; description?: string }) {
   return (
@@ -71,10 +79,12 @@ export default function SettingsModal() {
   const config = useHarnessStore((state) => state.config);
   const envInfo = useHarnessStore((state) => state.envInfo);
   const skills = useHarnessStore((state) => state.skills);
+  const pluginCatalog = useHarnessStore((state) => state.pluginCatalog);
   const fallbackMessage = useHarnessStore((state) => state.configFallbackMessage);
   const setOpen = useHarnessStore((state) => state.setSettingsOpen);
   const saveConfig = useHarnessStore((state) => state.saveConfig);
   const loadSkills = useHarnessStore((state) => state.loadSkills);
+  const loadPluginCatalog = useHarnessStore((state) => state.loadPluginCatalog);
   const setAvailableModels = useHarnessStore((state) => state.setAvailableModels);
   const notify = useHarnessStore((state) => state.notify);
   const [draft, setDraft] = useState<AppConfig | null>(() => config ? structuredClone(config) : null);
@@ -87,6 +97,7 @@ export default function SettingsModal() {
   const [testError, setTestError] = useState<string | null>(null);
   const [customModelInput, setCustomModelInput] = useState(false);
   const [reloadingSkills, setReloadingSkills] = useState(false);
+  const [refreshingPlugins, setRefreshingPlugins] = useState(false);
   const [saving, setSaving] = useState(false);
   const [closeConfirm, setCloseConfirm] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -226,6 +237,12 @@ export default function SettingsModal() {
     setReloadingSkills(true);
     await loadSkills(true);
     setReloadingSkills(false);
+  };
+
+  const refreshPlugins = async () => {
+    setRefreshingPlugins(true);
+    await loadPluginCatalog();
+    setRefreshingPlugins(false);
   };
 
   const submit = async () => {
@@ -376,6 +393,40 @@ export default function SettingsModal() {
                       </div>
                     ))}
                   </div>
+                </SettingSection>
+              ) : section === "plugins" ? (
+                <SettingSection title="运行时插件" description="检查插件加载状态和 Python 执行来源。插件在启动时加载，更换 DLL 后需重启应用。">
+                  <div className="section-toolbar">
+                    <button type="button" className="button secondary compact" onClick={() => void refreshPlugins()} disabled={refreshingPlugins}><RefreshCw size={15} className={refreshingPlugins ? "spinning" : ""} />刷新状态</button>
+                    <button type="button" className="button secondary compact" onClick={() => { void ipcInvoke("open_plugin_dir", {}).catch((error) => notify(`打开插件目录失败：${String(error)}`, "error")); }}><FolderOpen size={15} />打开插件目录</button>
+                  </div>
+                  <div className={`python-runtime ${pluginCatalog?.python.available ? "is-ready" : "is-unavailable"}`}>
+                    {pluginCatalog?.python.available ? <CircleCheck size={20} /> : <CircleX size={20} />}
+                    <div>
+                      <strong>Python 执行环境</strong>
+                      <p>{!pluginCatalog ? "正在读取运行时状态…" : pluginCatalog.python.available ? `当前使用${pythonSourceLabels[pluginCatalog.python.source ?? "system"]}` : "未检测到可用的 Python 运行时"}</p>
+                      {pluginCatalog?.python.program && <code>{pluginCatalog.python.program}</code>}
+                      {pluginCatalog?.python.error && <p className="plugin-error">{pluginCatalog.python.error}</p>}
+                    </div>
+                    <span className="runtime-status">{pluginCatalog?.python.available ? "可用" : "不可用"}</span>
+                  </div>
+                  <p className="runtime-priority"><Blocks size={16} />存在可用的内置 Python 插件时，所有 Python 代码都优先通过该插件执行。</p>
+                  <div className="skills-list plugin-list">
+                    {!pluginCatalog && <p className="muted-empty">正在读取插件清单…</p>}
+                    {pluginCatalog?.plugins.length === 0 && <p className="muted-empty">未检测到运行时插件。可将受信任的 python.dll 放入应用目录并重启。</p>}
+                    {pluginCatalog?.plugins.map((plugin) => (
+                      <div className="skill-row plugin-row" key={`${plugin.path}-${plugin.status}`}>
+                        <div>
+                          <strong>{plugin.name}{plugin.version && ` ${plugin.version}`}</strong>
+                          {plugin.status === "ready" ? <p>ID：{plugin.id} · shell={plugin.shell}</p> : <p className="plugin-error">{plugin.error ?? "插件加载失败"}</p>}
+                          <code>{plugin.path}</code>
+                        </div>
+                        <span className={`skill-source plugin-status ${plugin.status === "error" ? "is-error" : ""}`}>{plugin.status === "ready" ? "已加载" : "加载失败"}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {pluginCatalog && <p className="plugin-directory">插件目录：<code>{pluginCatalog.directory}</code></p>}
+                  <p className="security-note"><ShieldCheck size={16} />DLL 插件拥有本机代码权限，只应使用来源可信的插件。</p>
                 </SettingSection>
               ) : section === "appearance" ? (
                 <SettingSection title="外观" description="选择适合当前工作环境的显示方式。">

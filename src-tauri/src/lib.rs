@@ -38,6 +38,14 @@ pub struct EnvInfo {
     pub available_shells: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCatalog {
+    pub plugins: Vec<plugins::PluginInfo>,
+    pub python: tools::PythonRuntimeInfo,
+    pub directory: String,
+}
+
 #[tauri::command]
 fn create_session() -> Result<agent::session::SessionSummary, String> {
     let session = Session::new(agent::prompt::system_prompt());
@@ -324,6 +332,22 @@ fn reload_skills() -> Result<Vec<skills::SkillMeta>, String> {
 }
 
 #[tauri::command]
+fn get_plugin_catalog() -> Result<PluginCatalog, String> {
+    let directory = plugins::directory()?;
+    Ok(PluginCatalog {
+        plugins: plugins::list(),
+        python: tools::python_status(),
+        directory: directory.display().to_string(),
+    })
+}
+
+#[tauri::command]
+fn open_plugin_dir() -> Result<(), String> {
+    let path = plugins::directory()?;
+    tauri_plugin_opener::open_path(path, None::<&str>).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn open_skills_dir() -> Result<(), String> {
     let path = skills::ensure_installed().map_err(|error| error.to_string())?;
     tauri_plugin_opener::open_path(path, None::<&str>).map_err(|error| error.to_string())
@@ -475,6 +499,8 @@ pub fn run() {
             test_provider,
             list_skills,
             reload_skills,
+            get_plugin_catalog,
+            open_plugin_dir,
             open_skills_dir,
             open_config_dir,
             get_env_info,

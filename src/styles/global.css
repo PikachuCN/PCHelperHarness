@@ -2179,6 +2179,32 @@ svg {
 .skill-source { flex: 0 0 auto; padding: 2px 8px; color: var(--text-secondary); font-size: 12px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 4px; }
 .muted-empty { padding: 24px 0; color: var(--text-secondary); font-size: 12px; }
 
+.python-runtime {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.python-runtime > svg { flex: 0 0 auto; margin-top: 1px; color: var(--success); }
+.python-runtime.is-unavailable > svg { color: var(--red); }
+.python-runtime > div { flex: 1; min-width: 0; }
+.python-runtime strong { font-size: 13px; font-weight: 600; }
+.python-runtime p { margin: 3px 0 0; color: var(--text-secondary); font-size: 12px; }
+.python-runtime code { display: block; margin-top: 7px; color: var(--text-tertiary); font-size: 11px; overflow-wrap: anywhere; }
+.runtime-status { flex: 0 0 auto; color: var(--success); font-size: 12px; }
+.is-unavailable .runtime-status { color: var(--red); }
+.runtime-priority { display: flex; gap: 7px; align-items: center; margin: 10px 0 20px; color: var(--text-secondary); font-size: 12px; }
+.runtime-priority svg { flex: 0 0 auto; color: var(--accent); }
+.plugin-row > div { min-width: 0; }
+.plugin-row code { display: block; overflow-wrap: anywhere; }
+.skill-row p.plugin-error { color: var(--red); }
+.plugin-status.is-error { color: var(--red); background: var(--red-soft); border-color: var(--red-border); }
+.plugin-directory { margin-top: 12px; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.plugin-directory code { color: var(--text-tertiary); }
+
 .field-group-title { margin-bottom: 8px; }
 
 .choice-card.theme-choice {

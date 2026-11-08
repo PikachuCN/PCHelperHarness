@@ -5,6 +5,7 @@ import type {
   IpcCommand,
   IpcCommandMap,
   PendingApproval,
+  PluginCatalog,
   PromptMessage,
   RiskAssessment,
   SessionSummary,
@@ -84,6 +85,12 @@ const skills: SkillInfo[] = [
   { name: "network-repair", description: "诊断适配器、DNS、代理与网络连接。", source: "内置", path: "skills/network-repair" },
   { name: "disk-cleanup", description: "安全分析磁盘占用并清理临时文件。", source: "用户", path: "skills/disk-cleanup" },
 ];
+
+const pluginCatalog: PluginCatalog = {
+  plugins: [{ id: "python", name: "Python", version: "3.13.17", shell: "python", path: "C:\\Harness\\python.dll", status: "ready", error: null }],
+  python: { available: true, source: "plugin", program: "C:\\Harness\\data\\plugins\\python\\python.exe", error: null },
+  directory: "C:\\Harness",
+};
 
 const timers = new Map<string, number[]>();
 const approvals = new Map<string, PendingApproval>();
@@ -330,10 +337,12 @@ export async function mockInvoke<K extends IpcCommand>(command: K, rawArgs: IpcC
     case "reload_skills":
       await new Promise((resolve) => window.setTimeout(resolve, 300));
       return structuredClone(skills);
+    case "get_plugin_catalog": return structuredClone(pluginCatalog);
+    case "open_plugin_dir":
     case "open_skills_dir":
     case "open_config_dir":
     case "restart_as_admin": return undefined;
-    case "get_env_info": return { isAdmin: false, osVersion: "Windows 11 专业版 24H2", computerName: "DESKTOP-HARNESS", userName: "User", configPath: "C:\\Users\\User\\AppData\\Roaming\\Harness\\config.json", configUsedFallback: false, webview2Version: "142.0", resumeSessionId: null, availableShells: ["powershell", "cmd"] };
+    case "get_env_info": return { isAdmin: false, osVersion: "Windows 11 专业版 24H2", computerName: "DESKTOP-HARNESS", userName: "User", configPath: "C:\\Users\\User\\AppData\\Roaming\\Harness\\config.json", configUsedFallback: false, webview2Version: "142.0", resumeSessionId: null, availableShells: ["powershell", "cmd", "python"] };
     default: {
       const exhaustive: never = command;
       throw new Error(`未支持的命令：${String(exhaustive)}`);
