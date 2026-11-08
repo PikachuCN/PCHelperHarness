@@ -110,13 +110,15 @@ pub(crate) async fn execute_fixed_shell(
             };
             let path = file.path().to_path_buf();
             temporary_script = Some(file);
-            let mut process = if command_exists("python.exe") || command_exists("python") {
-                Command::new("python")
-            } else {
-                let mut command = Command::new("py.exe");
-                command.arg("-3");
-                command
+            let launch = match super::python::launch() {
+                Ok(launch) => launch,
+                Err(error) => {
+                    drop(temporary_script.take());
+                    return ToolResult::error(request, error);
+                }
             };
+            let mut process = Command::new(&launch.program);
+            process.args(&launch.base_args);
             process.arg(&path);
             process.env("PYTHONIOENCODING", "utf-8");
             process
@@ -472,6 +474,28 @@ mod tests {
             result.content
         );
         assert!(streamed.lock().unwrap().contains("中文诊断输出"));
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn python_executes_utf8_with_selected_runtime() {
+        let result = execute_shell(
+            &request(
+                "python",
+                "import sys; print(sys.executable); print('Python 中文输出')",
+                30,
+            ),
+            CancellationToken::new(),
+            Arc::new(|_| {}),
+        )
+        .await;
+        assert_eq!(result.exit_code, Some(0), "{}", result.content);
+        assert!(
+            result.content.contains("Python 中文输出"),
+            "{}",
+            result.content
+        );
+        assert!(result.content.contains("python"), "{}", result.content);
     }
 
     #[cfg(windows)]

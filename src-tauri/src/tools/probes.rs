@@ -15,7 +15,7 @@ pub fn available_shells() -> Vec<&'static str> {
     if command_exists("wsl.exe") {
         shells.push("wsl");
     }
-    if command_exists("python.exe") || command_exists("python") || command_exists("py.exe") {
+    if super::python::launch().is_ok() {
         shells.push("python");
     }
     shells

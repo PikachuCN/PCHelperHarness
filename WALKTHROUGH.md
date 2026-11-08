@@ -140,11 +140,25 @@ pnpm tauri build --no-bundle
 
 产物：`src-tauri/target/release/harness.exe`
 
-- 大小：6,944,256 字节（6.62 MiB）
-- SHA-256：`47487EDB385B7823CBE0C09CA8BBC88D3901394F0ED1AA50136D2445F288886C`
-- 最终 Release 构建于 2026-11-08 20:18 完成；已原生启动确认内嵌页面与系统剪贴板正常，测试进程已关闭
+- 大小：18,502,144 字节（17.65 MiB）
+- SHA-256：`CA44837A02F2D884BA15156526FAEDB8CA30E60A16E86BB118CBBE9E83205D70`
+- 最终 Release 构建于 2026-11-08 20:43 完成；237 个库测试与 2 个协议集成测试通过，内嵌 Python 3.13.17 已完成独立中文输出验证
 
 将 EXE 复制到任意可写空目录运行。首次启动应生成 `config.json`、`skills/` 和按需使用的 `data/`。应用依赖系统 WebView2；缺失时会显示中文安装提示。未签名版本可能触发 SmartScreen“未知发布者”。
+
+### Python 便携运行时
+
+主 EXE 内嵌官方 Python 3.13.17 Windows x64 embeddable 压缩包，无需安装 Python。首次环境检测时会释放到 `data/runtime/python-3.13.17-embed-amd64/`；应用目录不可写时，使用 `%APPDATA%/Harness/data/runtime/`。压缩包来源为 `https://www.python.org/ftp/python/3.13.17/python-3.13.17-embed-amd64.zip`，SHA-256 为 `9e35319bffedab8b36ad44d8f377cb4f1733bcec257a0b6d04d94f01486ddb38`。
+
+Python 按以下顺序解析，放置外部运行时后需重启应用：
+
+1. 应用同级 `python/python.exe`，适合包含第三方依赖的完整便携环境。
+2. 应用同级 `python.exe`，其 DLL 和标准库也须位于可解析的位置。
+3. 应用同级 `python.zip`，自动释放到独立缓存目录，压缩包根目录必须包含 `python.exe`。
+4. EXE 内嵌运行时。
+5. 系统 `PATH` 中的 `python`、`py -3` 或 `python3`。
+
+内嵌版本提供 Python 标准库，不预装第三方 pip 包，也不会在首次运行时联网安装依赖。外部便携目录与 ZIP 释放后的运行时均通过绝对路径启动，不依赖系统 `PATH`。
 
 ## 仍需人工验证
 
