@@ -1,7 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "harness-main",
-  "description": "Harness 主窗口所需的核心事件、窗口和应用能力",
+  "description": "Harness 主窗口所需的核心事件、窗口、应用和文字剪贴板能力",
   "windows": ["main"],
-  "permissions": ["core:default", "opener:default"]
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text"
+  ]
 }

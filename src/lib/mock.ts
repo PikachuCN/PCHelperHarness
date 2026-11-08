@@ -5,6 +5,7 @@ import type {
   IpcCommand,
   IpcCommandMap,
   PendingApproval,
+  PromptMessage,
   RiskAssessment,
   SessionSummary,
   SkillInfo,
@@ -279,6 +280,21 @@ export async function mockInvoke<K extends IpcCommand>(command: K, rawArgs: IpcC
     case "load_session": {
       const { sessionId } = rawArgs as IpcCommandMap["load_session"]["args"];
       return structuredClone(histories[sessionId] ?? []);
+    }
+    case "get_message_prompt": {
+      const { sessionId, messageId } = rawArgs as IpcCommandMap["get_message_prompt"]["args"];
+      const history = histories[sessionId] ?? [];
+      const messageIndex = history.findIndex((item) => item.id === messageId && item.role === "user");
+      if (messageIndex < 0) throw new Error("找不到该用户消息对应的请求上下文");
+      const context: PromptMessage[] = [{ role: "system", content: "你是 Harness，一名严谨的 Windows 电脑维修工程师。先诊断再动手，执行本机操作前必须获得用户批准。" }];
+      for (const item of history.slice(0, messageIndex + 1)) {
+        if (item.role === "user") context.push({ role: "user", content: item.content });
+        else {
+          context.push({ role: "assistant", text: item.content, reasoning: item.reasoning, tool_calls: [] });
+          for (const tool of item.tools) context.push({ role: "tool", call_id: tool.callId, content: tool.output });
+        }
+      }
+      return context;
     }
     case "rename_session": {
       const args = rawArgs as IpcCommandMap["rename_session"]["args"];

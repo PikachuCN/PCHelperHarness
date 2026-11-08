@@ -165,14 +165,14 @@ svg {
 }
 
 .button.primary {
-  color: #fff;
-  background: #0f6e8c;
-  border-color: #0f6e8c;
+  color: var(--on-accent);
+  background: var(--accent-control);
+  border-color: var(--accent-control);
 }
 
 .button.primary:hover:not(:disabled) {
-  background: #0b5d76;
-  border-color: #0b5d76;
+  background: var(--accent-control-hover);
+  border-color: var(--accent-control-hover);
 }
 
 .button.secondary {
@@ -278,7 +278,7 @@ svg {
   font-size: 14px;
   font-weight: 600;
   line-height: 1;
-  background: #0f6e8c;
+  background: var(--accent-control);
   border-radius: 7px;
 }
 
@@ -361,6 +361,51 @@ svg {
   height: 1px;
   margin: 4px;
   background: var(--border);
+}
+
+.text-context-menu,
+.message-context-menu {
+  position: fixed;
+  z-index: 1700;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow-toast);
+  animation: fade-in 120ms ease-out;
+}
+
+.text-context-menu { width: 176px; }
+.message-context-menu { width: 208px; }
+
+.text-context-menu > button,
+.message-context-menu > button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: left;
+  background: transparent;
+  border-radius: 5px;
+}
+
+.text-context-menu > button:hover:not(:disabled),
+.text-context-menu > button:focus-visible,
+.message-context-menu > button:hover:not(:disabled),
+.message-context-menu > button:focus-visible {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.text-context-menu kbd {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+  font-size: 11px;
 }
 
 .empty-sessions {
@@ -612,7 +657,7 @@ svg {
   color: #fff;
   font-size: 19px;
   font-weight: 600;
-  background: #0f6e8c;
+  background: var(--accent-control);
   border-radius: 11px;
 }
 
@@ -1639,14 +1684,14 @@ svg {
   width: 32px;
   height: 32px;
   padding: 0;
-  color: #fff;
-  background: #0f6e8c;
+  color: var(--on-accent);
+  background: var(--accent-control);
   border-radius: 8px;
   transition: background-color var(--transition);
 }
 
 .send-button:hover:not(:disabled) {
-  background: #0b5d76;
+  background: var(--accent-control-hover);
 }
 
 .send-button:disabled {
@@ -1770,7 +1815,8 @@ svg {
   min-width: 0;
   padding: 24px 24px 32px;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
@@ -2080,7 +2126,7 @@ svg {
   transition: transform var(--transition);
 }
 
-.switch.is-on { background: #0f6e8c; }
+.switch.is-on { background: var(--accent-control); }
 .switch.is-on > span { transform: translateX(14px); }
 
 .risk-guide {
@@ -2218,6 +2264,106 @@ svg {
 .settings-unavailable { display: flex; flex-direction: column; gap: 10px; align-items: center; padding: 60px 0; color: var(--text-secondary); }
 
 /* Dialogs and notifications */
+.prompt-backdrop { z-index: 1800; }
+
+.prompt-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 860px;
+  max-width: calc(100vw - 32px);
+  height: min(680px, calc(100dvh - 32px));
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-dialog);
+  animation: dialog-in 150ms ease-out;
+}
+
+.prompt-dialog-header {
+  display: flex;
+  flex: 0 0 56px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.prompt-dialog-header > div {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.prompt-dialog-header h2 { font-size: 15px; font-weight: 600; }
+
+.prompt-dialog-meta {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+}
+
+.prompt-dialog-meta p {
+  max-width: 620px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.prompt-dialog-meta .button { flex: 0 0 auto; }
+
+.prompt-dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--code-bg);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.prompt-raw {
+  min-width: 100%;
+  padding: 20px;
+  color: var(--code-text);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.prompt-loading,
+.prompt-error {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  padding: 24px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.prompt-error { color: var(--red); }
+
+.prompt-dialog-footer {
+  display: flex;
+  flex: 0 0 56px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: var(--surface-subtle);
+  border-top: 1px solid var(--border);
+}
+
+.prompt-dialog-footer > span { color: var(--text-tertiary); font-size: 12px; }
+
 .confirm-dialog {
   position: relative;
   width: 400px;

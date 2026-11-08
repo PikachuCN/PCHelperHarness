@@ -44,6 +44,11 @@ export interface ChatMessage {
   tools: ToolRun[];
 }
 
+export type PromptMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; text: string; reasoning?: string; tool_calls?: { id: string; name: string; arguments: string }[] }
+  | { role: "tool"; call_id: string; content: string };
+
 export interface PendingApproval {
   id: ID;
   sessionId: ID;
@@ -263,6 +268,7 @@ export interface IpcCommandMap {
   };
   list_sessions: { args: Record<string, never>; result: SessionSummary[] };
   load_session: { args: { sessionId: ID }; result: ChatMessage[] };
+  get_message_prompt: { args: { sessionId: ID; messageId: ID }; result: PromptMessage[] };
   rename_session: { args: { sessionId: ID; title: string }; result: void };
   delete_session: { args: { sessionId: ID }; result: void };
   export_session: { args: { sessionId: ID }; result: string };

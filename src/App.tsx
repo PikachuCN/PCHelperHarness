@@ -4,6 +4,7 @@ import Sidebar from "./components/Sidebar";
 import ChatView from "./components/ChatView";
 import Composer from "./components/Composer";
 import SettingsModal from "./components/SettingsModal";
+import TextContextMenu from "./components/TextContextMenu";
 import { IconButton } from "./components/Controls";
 import { listenToHarnessEvent } from "./lib/events";
 import { useHarnessStore } from "./lib/store";
@@ -69,12 +70,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const preventNativeMenu = (event: MouseEvent) => event.preventDefault();
-    document.addEventListener("contextmenu", preventNativeMenu);
-    return () => document.removeEventListener("contextmenu", preventNativeMenu);
-  }, []);
-
-  useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const applyTheme = () => {
       document.documentElement.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme;
@@ -96,6 +91,7 @@ export default function App() {
         <Composer />
       </div>
       {settingsOpen && <SettingsModal />}
+      <TextContextMenu />
       <Toast />
     </div>
   );

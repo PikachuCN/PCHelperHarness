@@ -68,6 +68,7 @@ export default function ChatView() {
                 <MessageItem
                   key={message.id}
                   message={message}
+                  sessionId={currentSessionId}
                   generating={generatingSessionId === currentSessionId}
                   isLastAssistant={message.id === lastAssistantId}
                   approvals={approvals.filter((approval) => {

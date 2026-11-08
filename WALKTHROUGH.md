@@ -66,6 +66,15 @@ Harness 已实现为 Rust + Tauri 2 + React + TypeScript 的 Windows 中文桌�
 - 四个快捷入口均实测列表数量从 3 增加到 4，原文打开和原生菜单屏蔽验证通过。
 - 截图：`unslop/fixed-session-context-menu.png`。
 
+## DeepSeekRuntime 配色与文字右键
+
+- 深色主题改为近黑灰中性色：主背景 `#171717`、侧栏 `#1B1B1B`、浮层 `#292929`，低饱和蓝色 `#58769C` 仅用于发送和主要操作；保留原有布局、浅色主题与风险色语义。
+- 新增通用文字右键菜单：输入框支持复制选区与系统剪贴板粘贴，普通对话文字支持复制选区；Tauri 使用 `clipboard-manager` 插件并为主窗口授予明确的读写权限。
+- 用户消息右键支持复制全文和“查看实际提示词”。后端 `get_message_prompt` 从持久化的 `model_messages` 还原该消息首次请求时的系统提示、历史对话与工具结果，旧会话同样适用，不读取接口密钥。
+- 设置内容区使用固定滚动条占位，并在绘制前重置 Tab 滚动位置，避免滚动条出现/消失及滚动位置变化引起闪动。
+- 浏览器实测消息复制、输入框粘贴、普通选区复制、提示词 JSON 查看均通过；六个设置 Tab 各连续采样 8 帧，内容宽度均保持 710px，透明度为 1，滚动位置为 0。
+- 截图：`unslop/deepseek-runtime-main.png`、`unslop/deepseek-runtime-prompt.png`、`unslop/deepseek-runtime-settings.png`。
+
 ## 原生事件权限与审批显示修复
 
 - 排查确认项目原先没有 `src-tauri/capabilities/`，浏览器 mock 又绕过了 Tauri 权限，导致真实 EXE 的事件监听失败没有被测试覆盖。
@@ -86,14 +95,14 @@ L3 第一次允许只进入二次确认状态。后端记录 3 秒等待时间�
 
 | 检查 | 结果 |
 |---|---|
-| `cargo test` | 230 个库测试通过，另有 2 个本地模拟服务集成测试通过 |
+| `cargo test` | 231 个库测试通过，另有 2 个本地模拟服务集成测试通过 |
 | 风险引擎 | 193 个专项测试，覆盖别名、大小写、复合命令、混淆、磁盘操作和误报 |
 | 模型链路 | 两种协议均完成“工具调用 → 只读文件执行 → 结果回传 → 最终答复” |
 | 执行器 | 中文 CMD 输出、实时回调、PowerShell 超时和主动停止均通过 |
 | DPAPI | 加解密往返、密文落盘、损坏密文回退均通过 |
 | `cargo clippy -- -D warnings` | 通过 |
 | `pnpm typecheck` | 通过 |
-| `pnpm build` | 通过；Vite 仅提示主 JS 包约 639KB，不影响运行 |
+| `pnpm build` | 通过；Vite 仅提示主 JS 包约 661KB，不影响运行 |
 | 浏览器交互 | 六个设置分类、深色主题、无横向溢出、L3 倒计时与二次确认均通过 |
 | 原生冒烟检查 | 在全新 `smoke/` 目录启动成功，窗口标题正确，配置生成，六个 Skills 释放到正确位置 |
 
@@ -128,9 +137,9 @@ pnpm tauri build --no-bundle
 
 产物：`src-tauri/target/release/harness.exe`
 
-- 大小：6,694,400 字节（6.38 MiB）
-- SHA-256：`5F50A30BFF249EA6238C6346927424952B212AA25BA4809F17FE6932EBAA4FB1`
-- 已在干净目录完成首次启动与 Skills 释放检查，测试进程已关闭
+- 大小：6,751,232 字节（6.44 MiB）
+- SHA-256：`5277B502B56578765BC3DE899785CED0130A76D988BEA076CE2CF40153F0E33E`
+- 最终 Release 构建于 2026-11-08 20:07 完成；历史干净目录启动与 Skills 释放检查见上方自动化验证
 
 将 EXE 复制到任意可写空目录运行。首次启动应生成 `config.json`、`skills/` 和按需使用的 `data/`。应用依赖系统 WebView2；缺失时会显示中文安装提示。未签名版本可能触发 SmartScreen“未知发布者”。
 

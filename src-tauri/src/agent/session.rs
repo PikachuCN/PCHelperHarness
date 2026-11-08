@@ -270,6 +270,32 @@ pub fn load_from(root: &Path, id: &str) -> Result<Session, SessionError> {
     Ok(session)
 }
 
+pub fn prompt_through_user(
+    session: &Session,
+    message_id: &str,
+) -> Result<Vec<LlmMessage>, SessionError> {
+    let mut user_messages = session
+        .messages
+        .iter()
+        .filter(|message| matches!(message.role, ChatRole::User));
+    let target_index = user_messages
+        .position(|message| message.id == message_id)
+        .ok_or_else(|| SessionError::NotFound(format!("用户消息 {message_id}")))?;
+
+    let mut remaining = target_index;
+    for (index, message) in session.model_messages.iter().enumerate() {
+        if matches!(message, LlmMessage::User { .. }) {
+            if remaining == 0 {
+                return Ok(session.model_messages[..=index].to_vec());
+            }
+            remaining -= 1;
+        }
+    }
+    Err(SessionError::NotFound(format!(
+        "用户消息 {message_id} 的模型请求上下文"
+    )))
+}
+
 pub fn list() -> Result<Vec<SessionSummary>, SessionError> {
     let root = config::sessions_dir();
     if !root.exists() {
@@ -398,6 +424,35 @@ mod tests {
         assert_eq!(summarize_title("你好"), "你好");
         let long_title = summarize_title("请帮我检查一个不属于预分类但内容特别长的自定义故障问题");
         assert!(long_title.chars().count() <= 25);
+    }
+
+    #[test]
+    fn restores_the_exact_request_context_for_each_user_message() {
+        let mut session = Session::new("系统提示".to_string());
+        let first = session.push_user("第一个问题");
+        session
+            .model_messages
+            .push(LlmMessage::assistant("第一条回复"));
+        let second = session.push_user("第二个问题");
+
+        let first_prompt = prompt_through_user(&session, &first.id).unwrap();
+        assert_eq!(first_prompt.len(), 2);
+        assert!(
+            matches!(&first_prompt[0], LlmMessage::System { content } if content == "系统提示")
+        );
+        assert!(
+            matches!(&first_prompt[1], LlmMessage::User { content } if content == "第一个问题")
+        );
+
+        let second_prompt = prompt_through_user(&session, &second.id).unwrap();
+        assert_eq!(second_prompt.len(), 4);
+        assert!(
+            matches!(&second_prompt[2], LlmMessage::Assistant { text, .. } if text == "第一条回复")
+        );
+        assert!(
+            matches!(&second_prompt[3], LlmMessage::User { content } if content == "第二个问题")
+        );
+        assert!(prompt_through_user(&session, "missing").is_err());
     }
 
     #[test]

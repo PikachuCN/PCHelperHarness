@@ -152,6 +152,16 @@ fn load_session(session_id: String) -> Result<Vec<agent::session::ChatMessage>, 
 }
 
 #[tauri::command]
+fn get_message_prompt(
+    session_id: String,
+    message_id: String,
+) -> Result<Vec<crate::llm::Message>, String> {
+    agent::session::load(&session_id)
+        .and_then(|session| agent::session::prompt_through_user(&session, &message_id))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn rename_session(
     session_id: String,
     title: String,
@@ -422,6 +432,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState {
             config: RwLock::new(loaded.config),
             approvals: ApprovalGate::default(),
@@ -456,6 +467,7 @@ pub fn run() {
             resolve_approval,
             list_sessions,
             load_session,
+            get_message_prompt,
             rename_session,
             delete_session,
             export_session,

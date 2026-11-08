@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -90,6 +90,7 @@ export default function SettingsModal() {
   const [saving, setSaving] = useState(false);
   const [closeConfirm, setCloseConfirm] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const dirtyRef = useRef(false);
   const closeConfirmRef = useRef(false);
   const dirty = useMemo(() => Boolean(config && draft && JSON.stringify(config) !== JSON.stringify(draft)), [config, draft]);
@@ -103,6 +104,11 @@ export default function SettingsModal() {
       setSelectedProviderId(config.activeProviderId);
     }
   }, [config, draft]);
+
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (content) content.scrollTop = 0;
+  }, [section]);
 
   const requestClose = () => {
     if (dirty) setCloseConfirm(true);
@@ -246,7 +252,7 @@ export default function SettingsModal() {
                 </button>
               ))}
             </nav>
-            <div className="settings-content">
+            <div className="settings-content" ref={contentRef}>
               {!draft ? (
                 <div className="settings-unavailable"><CircleX size={24} /><p>配置尚未加载，请关闭设置后重试。</p></div>
               ) : section === "interface" ? (
