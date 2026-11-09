@@ -415,6 +415,14 @@ mod tests {
     }
 
     #[test]
+    fn hardware_script_collects_memory_usage() {
+        let script = crate::system_overview_scripts::get("hardware").unwrap();
+        assert!(script.contains("Win32_OperatingSystem"));
+        assert!(script.contains("FreePhysicalMemory"));
+        assert!(script.contains("memoryUsedBytes = $memoryUsedBytes"));
+    }
+
+    #[test]
     fn network_script_uses_internet_profile_and_ipv4() {
         let script = crate::system_overview_scripts::get("network").unwrap();
         assert!(script.contains("IPv4Connectivity -eq 'Internet'"));

@@ -74,6 +74,7 @@ export function HardwareSection() {
           <InfoItem label="主板" wide>{displayText(data.motherboard.manufacturer)} {displayText(data.motherboard.product, "")} · 序列号 <SensitiveValue value={data.motherboard.serialNumber} /></InfoItem>
           <InfoItem label="BIOS" wide>{displayText(data.bios.manufacturer)} {displayText(data.bios.version, "")} · {formatDateOnly(data.bios.releaseDate)}</InfoItem>
           <InfoItem label="内存总容量">{data.memoryTotalBytes > 0 ? formatBytes(data.memoryTotalBytes) : "未读取"}</InfoItem>
+          <InfoItem label="已使用内存">{data.memoryUsedBytes === null ? "未读取" : formatBytes(data.memoryUsedBytes)}</InfoItem>
           <InfoItem label="内存条数量">{data.memoryModules.length > 0 ? `${data.memoryModules.length} 条` : "未读取"}</InfoItem>
         </InfoGrid>
         {data.memoryModules.length > 0 && <div className="overview-subsection"><h3>内存插槽</h3><div className="overview-table-wrap"><table className="overview-table"><thead><tr><th>插槽</th><th>容量</th><th>频率</th><th>制造商 / 型号</th><th>序列号</th></tr></thead><tbody>{data.memoryModules.map((item, index) => <tr key={`${item.deviceLocator}-${index}`}><td>{displayText(item.deviceLocator || item.bankLabel)}</td><td>{formatBytes(item.capacityBytes)}</td><td>{item.speedMHz ? `${item.speedMHz} MHz` : "未读取"}</td><td>{displayText(`${displayText(item.manufacturer, "")} ${displayText(item.partNumber, "")}`)}</td><td><SensitiveValue value={item.serialNumber} /></td></tr>)}</tbody></table></div></div>}

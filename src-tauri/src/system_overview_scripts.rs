@@ -195,6 +195,7 @@ $batteries = @()
 $motherboard = [ordered]@{ manufacturer = $null; product = $null; version = $null; serialNumber = $null }
 $bios = [ordered]@{ manufacturer = $null; version = $null; releaseDate = $null; serialNumber = $null }
 $memoryTotalBytes = 0
+$memoryUsedBytes = $null
 try {
     $processors = @(Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop | ForEach-Object {
         [pscustomobject][ordered]@{
@@ -247,6 +248,12 @@ if ([double]$memoryTotalBytes -eq 0 -and $memoryModules.Count -gt 0) {
     $memoryTotalBytes = ($memoryModules | Measure-Object -Property capacityBytes -Sum).Sum
 }
 try {
+    $operatingSystem = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+    if ([double]$memoryTotalBytes -gt 0 -and $null -ne $operatingSystem.FreePhysicalMemory) {
+        $memoryUsedBytes = [math]::Max(0, [double]$memoryTotalBytes - ([double]$operatingSystem.FreePhysicalMemory * 1024))
+    }
+} catch { $warnings += "内存使用量读取失败：$($_.Exception.Message)" }
+try {
     $graphics = @(Get-CimInstance -ClassName Win32_VideoController -ErrorAction Stop | ForEach-Object {
         $resolution = $null
         if ($null -ne $_.CurrentHorizontalResolution -and $null -ne $_.CurrentVerticalResolution) {
@@ -281,6 +288,7 @@ ConvertTo-Json -InputObject ([ordered]@{
     motherboard = $motherboard
     bios = $bios
     memoryTotalBytes = $memoryTotalBytes
+    memoryUsedBytes = $memoryUsedBytes
     memoryModules = $memoryModules
     graphics = $graphics
     audio = $audio

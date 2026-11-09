@@ -215,6 +215,7 @@ export interface HardwareInfo {
   motherboard: { manufacturer: string | null; product: string | null; version: string | null; serialNumber: string | null };
   bios: { manufacturer: string | null; version: string | null; releaseDate: string | null; serialNumber: string | null };
   memoryTotalBytes: number;
+  memoryUsedBytes: number | null;
   memoryModules: { capacityBytes: number | null; speedMHz: number | null; manufacturer: string | null; partNumber: string | null; bankLabel: string | null; deviceLocator: string | null; serialNumber: string | null }[];
   graphics: { name: string | null; adapterRamBytes: number | null; driverVersion: string | null; videoMode: string | null; resolution: string | null }[];
   audio: { name: string | null; manufacturer: string | null; status: string | null }[];

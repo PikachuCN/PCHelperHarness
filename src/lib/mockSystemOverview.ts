@@ -46,6 +46,7 @@ const data = {
     motherboard: { manufacturer: "LENOVO", product: "21HMCTO1WW", version: "SDK0T76538", serialNumber: "PF4ABCD123" },
     bios: { manufacturer: "LENOVO", version: "N3CET47W (1.29)", releaseDate: "2025-08-12T00:00:00+08:00", serialNumber: "PF4ABCD123" },
     memoryTotalBytes: 34_359_738_368,
+    memoryUsedBytes: 19_532_110_234,
     memoryModules: [
       { capacityBytes: 17_179_869_184, speedMHz: 5200, manufacturer: "Samsung", partNumber: "K3KL3L30CM-BGCT", bankLabel: "BANK 0", deviceLocator: "ChannelA-DIMM0", serialNumber: "3000ABCD" },
       { capacityBytes: 17_179_869_184, speedMHz: 5200, manufacturer: "Samsung", partNumber: "K3KL3L30CM-BGCT", bankLabel: "BANK 2", deviceLocator: "ChannelB-DIMM0", serialNumber: "3000ABCE" },

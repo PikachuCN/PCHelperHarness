@@ -99,6 +99,9 @@ export default function SystemOverviewView() {
   const storage = snapshot.storage?.data as StorageInfo | undefined;
   const volume = storage?.volumes.find((item) => item.driveLetter.toUpperCase() === "C:") ?? storage?.volumes[0];
   const processor = hardware?.processors[0];
+  const memoryUsedPercent = hardware && hardware.memoryTotalBytes > 0 && hardware.memoryUsedBytes !== null
+    ? Math.min(100, Math.max(0, hardware.memoryUsedBytes / hardware.memoryTotalBytes * 100))
+    : null;
   const refreshing = Object.values(snapshot).some((section) => section?.status === "loading");
   const runningNetworkTasks = Object.values(networkTools).filter((task) => task?.status === "running").length + (networkDiagnostic.status === "running" ? 1 : 0);
   const hasData = Object.values(snapshot).some((section) => Boolean(section?.data));
@@ -156,7 +159,7 @@ export default function SystemOverviewView() {
             <SummaryCard label="操作系统" icon={Monitor} loading={loading("basic")} value={failed("basic") ? "读取失败" : basic ? `${displayText(basic.osName)} ${displayText(basic.displayVersion, "")}` : "尚未读取"} detail={basic ? `内部版本 ${displayText(basic.build)} · ${displayText(basic.architecture)}` : undefined} />
             <SummaryCard label="Windows 激活" icon={BadgeCheck} loading={loading("activation")} tone={activation ? licenseStatusTone(activation.windows?.status) : "neutral"} value={failed("activation") ? "读取失败" : activation?.windows ? licenseStatusLabel(activation.windows.status) : "尚未读取"} detail={activation?.windows ? displayText(activation.windows.licenseDescription || activation.windows.licenseChannel) : undefined} />
             <SummaryCard label="处理器" icon={Cpu} loading={loading("hardware")} value={failed("hardware") ? "读取失败" : processor?.name ?? "尚未读取"} detail={processor ? `${displayText(processor.cores, "?")} 核 ${displayText(processor.logicalProcessors, "?")} 线程` : undefined} />
-            <SummaryCard label="内存" icon={MemoryStick} loading={loading("hardware")} value={failed("hardware") ? "读取失败" : hardware ? (hardware.memoryTotalBytes > 0 ? formatBytes(hardware.memoryTotalBytes) : "未读取") : "尚未读取"} detail={hardware?.memoryModules.length ? `${hardware.memoryModules.length} 条内存 · ${hardware.memoryModules[0]?.speedMHz || "未知"} MHz` : undefined} />
+            <SummaryCard label="内存" icon={MemoryStick} loading={loading("hardware")} value={failed("hardware") ? "读取失败" : hardware ? (hardware.memoryUsedBytes !== null ? `已用 ${formatBytes(hardware.memoryUsedBytes)}` : hardware.memoryTotalBytes > 0 ? formatBytes(hardware.memoryTotalBytes) : "未读取") : "尚未读取"} detail={hardware?.memoryTotalBytes ? `共 ${formatBytes(hardware.memoryTotalBytes)}${memoryUsedPercent === null ? "" : ` · ${memoryUsedPercent.toFixed(0)}%`}` : undefined} />
             <SummaryCard label="系统盘" icon={HardDrive} loading={loading("storage")} tone={!volumeHasCapacity || failed("storage") ? "neutral" : volumeFreeRatio < 0.1 ? "error" : volumeFreeRatio < 0.2 ? "warning" : "success"} value={failed("storage") ? "读取失败" : volume ? `剩余 ${formatBytes(volume.freeBytes)}` : "尚未读取"} detail={volume ? `${volume.driveLetter} · 共 ${formatBytes(volume.sizeBytes)}` : undefined} />
             <SummaryCard label="本次开机" icon={Clock} loading={loading("basic")} value={failed("basic") ? "读取失败" : basic ? formatUptime(basic.uptimeSeconds) : "尚未读取"} detail={basic ? `启动于 ${formatDateTime(basic.lastBootTime)}` : undefined} />
           </section>
