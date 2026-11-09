@@ -230,6 +230,7 @@
   align-items: center;
   min-height: 38px;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: thin;
   padding: 0 4px;
   margin-bottom: 12px;
