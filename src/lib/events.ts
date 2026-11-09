@@ -33,7 +33,7 @@ export function listenToHarnessEvent<K extends HarnessEventName>(
     if (disposed) dispose();
     else unlisten = dispose;
   }).catch((error) => {
-    onError?.(`无法监听“${event}”事件：${String(error)}。请检查应用权限或重启 Harness。`);
+    onError?.(`无法监听“${event}”事件：${String(error)}。请检查应用权限或重启灵犀电脑管家。`);
   });
 
   return () => {

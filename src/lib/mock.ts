@@ -304,7 +304,7 @@ export async function mockInvoke<K extends IpcCommand>(command: K, rawArgs: IpcC
       const history = histories[sessionId] ?? [];
       const messageIndex = history.findIndex((item) => item.id === messageId && item.role === "user");
       if (messageIndex < 0) throw new Error("找不到该用户消息对应的请求上下文");
-      const context: PromptMessage[] = [{ role: "system", content: "你是 Harness，一名严谨的 Windows 电脑维修工程师。先诊断再动手，执行本机操作前必须获得用户批准。" }];
+      const context: PromptMessage[] = [{ role: "system", content: "你是灵犀电脑管家，一名严谨的 Windows 电脑维修工程师。先诊断再动手，执行本机操作前必须获得用户批准。" }];
       for (const item of history.slice(0, messageIndex + 1)) {
         if (item.role === "user") context.push({ role: "user", content: item.content });
         else {

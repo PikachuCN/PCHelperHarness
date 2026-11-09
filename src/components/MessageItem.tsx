@@ -8,6 +8,7 @@ import rehypeHighlight from "rehype-highlight";
 import { writeClipboardText } from "../lib/clipboard";
 import { useHarnessStore } from "../lib/store";
 import type { ChatMessage, PendingApproval } from "../lib/types";
+import appIcon from "../../assets/icon.svg";
 import ToolCard from "./ToolCard";
 import ApprovalCard from "./ApprovalCard";
 import PromptDialog from "./PromptDialog";
@@ -113,8 +114,8 @@ export default function MessageItem({ message, sessionId, approvals, generating,
   }
 
   return (
-    <article className="message assistant-message" aria-label="Harness 的回复">
-      <div className="assistant-avatar" aria-hidden="true">H</div>
+    <article className="message assistant-message" aria-label="灵犀电脑管家的回复">
+      <img className="assistant-avatar" src={appIcon} alt="" />
       <div className="assistant-content">
         {message.reasoning && (
           <details className="reasoning-block" open={reasoningOpen} onToggle={(event) => setReasoningOpen(event.currentTarget.open)}>

@@ -380,7 +380,7 @@ pub fn export(id: &str) -> Result<String, SessionError> {
 
 fn markdown_report(session: &Session) -> String {
     let mut report = format!(
-        "# Harness 诊断报告\n\n- 会话：{}\n- 创建时间：{}\n- 导出时间：{}\n\n",
+        "# 灵犀电脑管家诊断报告\n\n- 会话：{}\n- 创建时间：{}\n- 导出时间：{}\n\n",
         session.title,
         session
             .created_at

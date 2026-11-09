@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Harness",
+  "productName": "灵犀电脑管家",
   "version": "0.1.0",
   "identifier": "com.harness.repair",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Harness 电脑维修助手",
+        "title": "灵犀电脑管家",
         "width": 1100,
         "height": 760,
         "minWidth": 760,

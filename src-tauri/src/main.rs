@@ -43,8 +43,8 @@ fn show_webview2_prompt() {
     fn wide(value: &str) -> Vec<u16> {
         value.encode_utf16().chain(Some(0)).collect()
     }
-    let text = wide("Harness 需要 Microsoft Edge WebView2 运行时。\n\nWin10 21H2 及以后版本通常已预装。是否打开官方下载页面？");
-    let title = wide("Harness 电脑维修助手");
+    let text = wide("灵犀电脑管家需要 Microsoft Edge WebView2 运行时。\n\nWin10 21H2 及以后版本通常已预装。是否打开官方下载页面？");
+    let title = wide("灵犀电脑管家");
     unsafe {
         if MessageBoxW(
             None,

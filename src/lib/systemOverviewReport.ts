@@ -25,7 +25,7 @@ export function buildDiagnosticSummary(snapshot: SystemOverviewSnapshot): string
   const volume = systemVolume(storage);
   const processor = hardware?.processors[0]?.name;
   const lines = [
-    "Harness 系统诊断摘要",
+    "灵犀电脑管家 系统诊断摘要",
     `系统：${basic ? `${displayText(basic.osName)} ${displayText(basic.displayVersion, "")}（${displayText(basic.build)}）` : "未读取"}`,
     `Windows 激活：${activation?.windows ? licenseStatusLabel(activation.windows.status) : "未读取"}`,
     `处理器：${displayText(processor)}`,
@@ -98,7 +98,7 @@ export function buildSystemOverviewMarkdown(snapshot: SystemOverviewSnapshot): s
   const network = sectionData<NetworkInfo>(snapshot, "network");
   const security = sectionData<SecurityInfo>(snapshot, "security");
   const lines = [
-    "# Harness 系统概况报告（脱敏）",
+    "# 灵犀电脑管家 系统概况报告（脱敏）",
     "",
     `生成时间：${formatDateTime(new Date().toISOString())}`,
     "",

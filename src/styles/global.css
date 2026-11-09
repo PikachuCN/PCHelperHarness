@@ -269,16 +269,10 @@ svg {
 }
 
 .brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   width: 27px;
   height: 27px;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1;
-  background: var(--accent-control);
+  object-fit: cover;
   border-radius: 7px;
 }
 
@@ -648,16 +642,11 @@ svg {
 }
 
 .empty-symbol {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   width: 42px;
   height: 42px;
   margin-bottom: 18px;
-  color: #fff;
-  font-size: 19px;
-  font-weight: 600;
-  background: var(--accent-control);
+  object-fit: cover;
   border-radius: 11px;
 }
 
@@ -976,17 +965,11 @@ svg {
 }
 
 .assistant-avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   width: 28px;
   height: 28px;
   margin-top: 1px;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-soft-hover);
+  object-fit: cover;
   border-radius: 7px;
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Gauge, HardDrive, PanelLeftOpen, ScanSearch, Wifi } from "lucide-react";
+import appIcon from "../../assets/icon.svg";
 import { useHarnessStore } from "../lib/store";
 import MessageItem from "./MessageItem";
 import { IconButton } from "./Controls";
@@ -50,9 +51,9 @@ export default function ChatView() {
             <div className="loading-session" role="status"><span className="spinner" />正在加载对话…</div>
           ) : messages.length === 0 ? (
             <section className="empty-state" aria-labelledby="empty-title">
-              <div className="empty-symbol" aria-hidden="true">H</div>
+              <img className="empty-symbol" src={appIcon} alt="" />
               <h2 id="empty-title">电脑遇到问题了吗？</h2>
-              <p>描述现象，Harness 会先诊断，再在你同意后执行修复。</p>
+              <p>描述现象，灵犀电脑管家会先诊断，再在你同意后执行修复。</p>
               <div className="shortcut-grid">
                 {shortcuts.map(({ icon: Icon, title, description, prompt }) => (
                   <button key={title} type="button" className="shortcut-card" onClick={() => void sendMessage(prompt)}>

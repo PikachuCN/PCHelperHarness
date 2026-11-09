@@ -32,6 +32,7 @@ import {
 import { ipcInvoke } from "../lib/ipc";
 import { useHarnessStore } from "../lib/store";
 import type { AppConfig, ModelTestResult, ProviderConfig } from "../lib/types";
+import appIcon from "../../assets/icon.svg";
 import { ConfirmDialog, IconButton } from "./Controls";
 import SelectControl from "./SelectControl";
 
@@ -291,7 +292,7 @@ export default function SettingsModal() {
   return createPortal(
     <>
       <div className="settings-backdrop" onMouseDown={(event) => event.target === event.currentTarget && requestClose()}>
-        <div className="settings-modal" role="dialog" aria-modal="true" aria-label="Harness 设置" ref={dialogRef}>
+        <div className="settings-modal" role="dialog" aria-modal="true" aria-label="灵犀电脑管家设置" ref={dialogRef}>
           <header className="settings-header">
             <div><Settings2 size={19} /><h1>设置</h1></div>
             <IconButton label="关闭设置" onClick={requestClose}><X size={19} /></IconButton>
@@ -533,12 +534,12 @@ export default function SettingsModal() {
                   <div className="section-toolbar storage-actions">
                     <button type="button" className="button secondary compact" onClick={() => { void ipcInvoke("open_config_dir", {}).catch((error) => notify(`打开配置目录失败：${String(error)}`, "error")); }}><FolderOpen size={15} />打开配置目录</button>
                   </div>
-                  <p className="security-note"><ShieldCheck size={16} />诊断内容仅发送给你配置的模型服务，不会另传至 Harness 服务。</p>
+                  <p className="security-note"><ShieldCheck size={16} />诊断内容仅发送给你配置的模型服务，不会另传至灵犀电脑管家服务。</p>
                 </SettingSection>
               ) : (
-                <SettingSection title="关于 Harness" description="安静、精确、可信的 Windows 电脑维修助手。">
-                  <div className="about-brand"><span className="brand-mark">H</span><div><h3>Harness</h3><p>版本 0.1.0</p></div></div>
-                  <p className="about-copy">Harness 将模型诊断能力与本机命令执行连接起来。每个需要权限的步骤都清晰展示命令、影响与风险，最终决定始终由你做出。</p>
+                <SettingSection title="关于灵犀电脑管家" description="安静、精确、可信的 Windows 电脑维修助手。">
+                  <div className="about-brand"><img className="brand-mark" src={appIcon} alt="" /><div><h3>灵犀电脑管家</h3><p>版本 0.1.0</p></div></div>
+                  <p className="about-copy">灵犀电脑管家将模型诊断能力与本机命令执行连接起来。每个需要权限的步骤都清晰展示命令、影响与风险，最终决定始终由你做出。</p>
                   <div className="about-meta"><span>运行平台</span><strong>Windows · Tauri</strong></div>
                   <div className="about-meta"><span>WebView2</span><strong>{envInfo?.webview2Version ?? "未读取"}</strong></div>
                   <div className="about-meta"><span>界面设计</span><strong>unslop by @heydamir, CC BY 4.0</strong></div>

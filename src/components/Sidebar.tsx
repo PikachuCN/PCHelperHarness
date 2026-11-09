@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useHarnessStore } from "../lib/store";
 import type { SessionSummary } from "../lib/types";
+import appIcon from "../../assets/icon.svg";
 import { ConfirmDialog, IconButton } from "./Controls";
 
 interface SessionGroup {
@@ -106,8 +107,8 @@ export default function Sidebar() {
       <aside className={`sidebar ${collapsed ? "is-collapsed" : ""}`} aria-label="对话侧栏" aria-hidden={collapsed}>
         <div className="sidebar-header">
           <button type="button" className="brand" onClick={() => void newSession()} disabled={creatingSession} tabIndex={collapsed ? -1 : 0}>
-            <span className="brand-mark" aria-hidden="true">H</span>
-            <span>Harness</span>
+            <img className="brand-mark" src={appIcon} alt="" />
+            <span>灵犀电脑管家</span>
           </button>
           <IconButton label="收起侧栏" onClick={toggleSidebar} tabIndex={collapsed ? -1 : 0}>
             <PanelLeftClose size={18} />
