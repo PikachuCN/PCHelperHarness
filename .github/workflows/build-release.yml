@@ -49,9 +49,20 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($version)) {
             throw "No version found in src-tauri/tauri.conf.json"
           }
+          $metadata = cargo metadata --manifest-path "src-tauri/Cargo.toml" --no-deps --format-version 1 --locked | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to read Rust package metadata"
+          }
+          $pluginVersion = ($metadata.packages | Where-Object { $_.name -eq "harness-python-plugin" } | Select-Object -First 1).version
+          if ([string]::IsNullOrWhiteSpace($pluginVersion)) {
+            throw "No version found for harness-python-plugin"
+          }
           $tag = "v$version-build.$env:GITHUB_RUN_NUMBER"
+          $pluginTag = "python-plugin-v$pluginVersion-build.$env:GITHUB_RUN_NUMBER"
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "plugin_version=$pluginVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "plugin_tag=$pluginTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -65,78 +76,70 @@ jobs:
       - name: Build application and plugins
         run: pnpm tauri build --no-bundle
 
-      - name: Install UPX
-        shell: pwsh
-        run: |
-          choco install upx --yes --no-progress
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to install UPX"
-          }
-
-      - name: Pack EXE with UPX
-        shell: pwsh
-        run: |
-          $exe = "src-tauri/target/release/harness.exe"
-          if (-not (Test-Path $exe -PathType Leaf)) {
-            throw "Missing build artifact: $exe"
-          }
-          upx --best --lzma $exe
-          if ($LASTEXITCODE -ne 0) {
-            throw "UPX compression failed"
-          }
-          upx -t $exe
-          if ($LASTEXITCODE -ne 0) {
-            throw "UPX integrity test failed"
-          }
-
-      - name: Package portable release
-        id: package
+      - name: Prepare standalone release assets
+        id: assets
         shell: pwsh
         run: |
           $version = "${{ steps.meta.outputs.version }}"
-          $exe = "src-tauri/target/release/harness.exe"
-          $dll = "src-tauri/target/release/python.dll"
-          foreach ($file in @($exe, $dll)) {
+          $pluginVersion = "${{ steps.meta.outputs.plugin_version }}"
+          $exeSource = "src-tauri/target/release/harness.exe"
+          $dllSource = "src-tauri/target/release/python.dll"
+          foreach ($file in @($exeSource, $dllSource)) {
             if (-not (Test-Path $file -PathType Leaf)) {
               throw "Missing build artifact: $file"
             }
           }
 
-          $stage = "release-package"
-          New-Item -ItemType Directory -Path $stage -Force | Out-Null
-          Copy-Item $exe -Destination "$stage/harness.exe" -Force
-          Copy-Item $dll -Destination "$stage/python.dll" -Force
+          $applicationStage = "release-assets/application"
+          $pluginStage = "release-assets/python-plugin"
+          New-Item -ItemType Directory -Path @($applicationStage, $pluginStage) -Force | Out-Null
+          $exe = "$applicationStage/harness.exe"
+          $dll = "$pluginStage/python.dll"
+          Copy-Item $exeSource -Destination $exe -Force
+          Copy-Item $dllSource -Destination $dll -Force
 
-          $zip = "Harness-$version-windows-x64-portable.zip"
-          Compress-Archive -Path "$stage/*" -DestinationPath $zip -Force
+          $applicationChecksums = "Harness-$version-windows-x64-SHA256.txt"
+          $pluginChecksums = "Harness-Python-Plugin-$pluginVersion-windows-x64-SHA256.txt"
+          $exeHash = (Get-FileHash -Path $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $dllHash = (Get-FileHash -Path $dll -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$exeHash  harness.exe" | Out-File -FilePath $applicationChecksums -Encoding ascii
+          "$dllHash  python.dll" | Out-File -FilePath $pluginChecksums -Encoding ascii
 
-          $checksums = "Harness-$version-SHA256SUMS.txt"
-          $hash = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  $zip" | Out-File -FilePath $checksums -Encoding ascii
+          "exe=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "application_checksums=$applicationChecksums" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "dll=$dll" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "plugin_checksums=$pluginChecksums" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-          "zip=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "checksums=$checksums" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-      - name: Upload build artifact
+      - name: Upload application build artifact
         uses: actions/upload-artifact@v4
         with:
           name: Harness-${{ steps.meta.outputs.version }}-windows-x64-${{ github.run_number }}
           path: |
-            ${{ steps.package.outputs.zip }}
-            ${{ steps.package.outputs.checksums }}
+            ${{ steps.assets.outputs.exe }}
+            ${{ steps.assets.outputs.application_checksums }}
           if-no-files-found: error
           retention-days: 7
 
-      - name: Publish GitHub Release
+      - name: Upload Python plugin build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Harness-Python-Plugin-${{ steps.meta.outputs.plugin_version }}-windows-x64-${{ github.run_number }}
+          path: |
+            ${{ steps.assets.outputs.dll }}
+            ${{ steps.assets.outputs.plugin_checksums }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish application GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.meta.outputs.tag }}
-          RELEASE_ZIP: ${{ steps.package.outputs.zip }}
-          RELEASE_CHECKSUMS: ${{ steps.package.outputs.checksums }}
+          RELEASE_EXE: ${{ steps.assets.outputs.exe }}
+          RELEASE_CHECKSUMS: ${{ steps.assets.outputs.application_checksums }}
         run: |
           $repo = $env:GITHUB_REPOSITORY
-          $assets = @($env:RELEASE_ZIP, $env:RELEASE_CHECKSUMS)
+          $assets = @($env:RELEASE_EXE, $env:RELEASE_CHECKSUMS)
 
           gh release view $env:RELEASE_TAG --repo $repo --json id 2>$null | Out-Null
           if ($LASTEXITCODE -eq 0) {
@@ -145,5 +148,26 @@ jobs:
             gh release create $env:RELEASE_TAG @assets --repo $repo --title "Harness $env:RELEASE_TAG" --generate-notes --target $env:GITHUB_SHA --latest
           }
           if ($LASTEXITCODE -ne 0) {
-            throw "Failed to publish GitHub Release"
+            throw "Failed to publish application GitHub Release"
+          }
+
+      - name: Publish Python plugin GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.meta.outputs.plugin_tag }}
+          RELEASE_DLL: ${{ steps.assets.outputs.dll }}
+          RELEASE_CHECKSUMS: ${{ steps.assets.outputs.plugin_checksums }}
+        run: |
+          $repo = $env:GITHUB_REPOSITORY
+          $assets = @($env:RELEASE_DLL, $env:RELEASE_CHECKSUMS)
+
+          gh release view $env:RELEASE_TAG --repo $repo --json id 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG @assets --repo $repo --clobber
+          } else {
+            gh release create $env:RELEASE_TAG @assets --repo $repo --title "Harness Python Plugin $env:RELEASE_TAG" --generate-notes --target $env:GITHUB_SHA
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to publish Python plugin GitHub Release"
           }

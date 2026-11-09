@@ -118,6 +118,15 @@ src-tauri/target/release/python.dll
 
 基础功能只需要 `harness.exe`；需要 Python 工具时，将 `python.dll` 与 EXE 放在同一目录并重启应用。未签名程序可能触发 Windows SmartScreen 提示。
 
+### GitHub Actions 发布产物
+
+主程序和 Python 插件通过两个独立的 GitHub Release 发布，均直接提供原始文件及各自的 SHA-256 校验文件：
+
+- `v<主程序版本>-build.<运行编号>`：仅包含 `harness.exe`。
+- `python-plugin-v<插件版本>-build.<运行编号>`：仅包含 `python.dll`，插件版本取自 `src-tauri/plugins/python/Cargo.toml`。
+
+发布流程不执行 UPX 加壳，也不再将主程序和插件打入同一个 ZIP。需要 Python 功能时，分别从主程序 Release 和 Python 插件 Release 下载文件，并将 `python.dll` 放到 `harness.exe` 同目录。
+
 ## 配置与数据
 
 - 配置优先保存在 EXE 同目录；目录不可写时回退到 `%APPDATA%\Harness`。
