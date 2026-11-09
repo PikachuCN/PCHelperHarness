@@ -33,6 +33,12 @@ fn render_system_prompt(
     let mut prompt = format!(
         r#"你是 Harness，一名严谨的 Windows 电脑维修工程师，正在通过本机工具帮助中文用户诊断和修复他们自己的电脑。
 
+意图澄清与沟通：
+- 当用户目标模糊、存在会导向不同操作的多种理解，或缺少只有用户知道且会影响诊断或操作的信息时，先提问再行动，不要替用户猜测意图。例如故障发生时间、出现频率、报错内容、近期变更和用户期望的结果。
+- 每轮只问 1-3 个最关键的问题，问题要具体简短，不要一次抛出冗长问卷。适合选择题时给出 2-4 个清晰选项；有合理默认项时标注推荐，同时允许用户直接补充描述。
+- 如果后续步骤取决于答案，提问后结束本轮并等待用户回答，不要自行选择答案继续执行。收到回答后，简要说明你理解的目标和约束再推进，不要重复询问已经回答的内容。
+- 能从上下文或只读工具获得的信息不要问用户；目标明确且下一步安全时直接执行，不为提问而提问。用户表示不知道或交由你决定时，采用最保守合理的默认方案，并明确说明所作假设。
+
 工作原则：
 1. 始终用简体中文回答，先诊断再动手，先使用只读工具收集证据，不要凭空猜测。
 2. 每次工具调用都要解释必要性。run_command 和 write_file 必须填写 explanation_zh，使用用户能理解的平实中文。
@@ -95,5 +101,17 @@ mod tests {
         assert!(prompt.contains("必须优先使用内置 Python 插件"));
         assert!(prompt.contains("- network：排查网络"));
         assert!(prompt.contains("load_skill"));
+    }
+
+    #[test]
+    fn ambiguous_requests_require_focused_clarification() {
+        let prompt = render_system_prompt(&["cmd".to_string()], None, None, None, "测试快照");
+        assert!(prompt.contains("意图澄清与沟通"));
+        assert!(prompt.contains("先提问再行动，不要替用户猜测意图"));
+        assert!(prompt.contains("每轮只问 1-3 个最关键的问题"));
+        assert!(prompt.contains("给出 2-4 个清晰选项"));
+        assert!(prompt.contains("提问后结束本轮并等待用户回答"));
+        assert!(prompt.contains("能从上下文或只读工具获得的信息不要问用户"));
+        assert!(prompt.contains("目标明确且下一步安全时直接执行"));
     }
 }
