@@ -58,11 +58,9 @@ jobs:
             throw "No version found for harness-python-plugin"
           }
           $tag = "v$version-build.$env:GITHUB_RUN_NUMBER"
-          $pluginTag = "python-plugin-v$pluginVersion-build.$env:GITHUB_RUN_NUMBER"
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "plugin_version=$pluginVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "plugin_tag=$pluginTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -76,8 +74,8 @@ jobs:
       - name: Build application and plugins
         run: pnpm tauri build --no-bundle
 
-      - name: Prepare standalone release assets
-        id: assets
+      - name: Package separate release archives
+        id: package
         shell: pwsh
         run: |
           $version = "${{ steps.meta.outputs.version }}"
@@ -90,56 +88,49 @@ jobs:
             }
           }
 
-          $applicationStage = "release-assets/application"
-          $pluginStage = "release-assets/python-plugin"
+          $applicationStage = "release-package/application"
+          $pluginStage = "release-package/python-plugin"
           New-Item -ItemType Directory -Path @($applicationStage, $pluginStage) -Force | Out-Null
-          $exe = "$applicationStage/harness.exe"
-          $dll = "$pluginStage/python.dll"
-          Copy-Item $exeSource -Destination $exe -Force
-          Copy-Item $dllSource -Destination $dll -Force
+          Copy-Item $exeSource -Destination "$applicationStage/harness.exe" -Force
+          Copy-Item $dllSource -Destination "$pluginStage/python.dll" -Force
 
-          $applicationChecksums = "Harness-$version-windows-x64-SHA256.txt"
-          $pluginChecksums = "Harness-Python-Plugin-$pluginVersion-windows-x64-SHA256.txt"
-          $exeHash = (Get-FileHash -Path $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          $dllHash = (Get-FileHash -Path $dll -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$exeHash  harness.exe" | Out-File -FilePath $applicationChecksums -Encoding ascii
-          "$dllHash  python.dll" | Out-File -FilePath $pluginChecksums -Encoding ascii
+          $applicationZip = "Harness-$version-windows-x64-portable.zip"
+          $pluginZip = "Harness-Python-Plugin-$pluginVersion-windows-x64.zip"
+          Compress-Archive -Path "$applicationStage/harness.exe" -DestinationPath $applicationZip -Force
+          Compress-Archive -Path "$pluginStage/python.dll" -DestinationPath $pluginZip -Force
 
-          "exe=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "application_checksums=$applicationChecksums" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "dll=$dll" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "plugin_checksums=$pluginChecksums" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $checksums = "Harness-$version-SHA256SUMS.txt"
+          $applicationHash = (Get-FileHash -Path $applicationZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $pluginHash = (Get-FileHash -Path $pluginZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$applicationHash  $applicationZip" | Out-File -FilePath $checksums -Encoding ascii
+          "$pluginHash  $pluginZip" | Out-File -FilePath $checksums -Append -Encoding ascii
 
-      - name: Upload application build artifact
+          "application_zip=$applicationZip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "plugin_zip=$pluginZip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "checksums=$checksums" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: Harness-${{ steps.meta.outputs.version }}-windows-x64-${{ github.run_number }}
           path: |
-            ${{ steps.assets.outputs.exe }}
-            ${{ steps.assets.outputs.application_checksums }}
+            ${{ steps.package.outputs.application_zip }}
+            ${{ steps.package.outputs.plugin_zip }}
+            ${{ steps.package.outputs.checksums }}
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload Python plugin build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Harness-Python-Plugin-${{ steps.meta.outputs.plugin_version }}-windows-x64-${{ github.run_number }}
-          path: |
-            ${{ steps.assets.outputs.dll }}
-            ${{ steps.assets.outputs.plugin_checksums }}
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Publish application GitHub Release
+      - name: Publish GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.meta.outputs.tag }}
-          RELEASE_EXE: ${{ steps.assets.outputs.exe }}
-          RELEASE_CHECKSUMS: ${{ steps.assets.outputs.application_checksums }}
+          RELEASE_APPLICATION_ZIP: ${{ steps.package.outputs.application_zip }}
+          RELEASE_PLUGIN_ZIP: ${{ steps.package.outputs.plugin_zip }}
+          RELEASE_CHECKSUMS: ${{ steps.package.outputs.checksums }}
         run: |
           $repo = $env:GITHUB_REPOSITORY
-          $assets = @($env:RELEASE_EXE, $env:RELEASE_CHECKSUMS)
+          $assets = @($env:RELEASE_APPLICATION_ZIP, $env:RELEASE_PLUGIN_ZIP, $env:RELEASE_CHECKSUMS)
 
           gh release view $env:RELEASE_TAG --repo $repo --json id 2>$null | Out-Null
           if ($LASTEXITCODE -eq 0) {
@@ -148,26 +139,5 @@ jobs:
             gh release create $env:RELEASE_TAG @assets --repo $repo --title "Harness $env:RELEASE_TAG" --generate-notes --target $env:GITHUB_SHA --latest
           }
           if ($LASTEXITCODE -ne 0) {
-            throw "Failed to publish application GitHub Release"
-          }
-
-      - name: Publish Python plugin GitHub Release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.meta.outputs.plugin_tag }}
-          RELEASE_DLL: ${{ steps.assets.outputs.dll }}
-          RELEASE_CHECKSUMS: ${{ steps.assets.outputs.plugin_checksums }}
-        run: |
-          $repo = $env:GITHUB_REPOSITORY
-          $assets = @($env:RELEASE_DLL, $env:RELEASE_CHECKSUMS)
-
-          gh release view $env:RELEASE_TAG --repo $repo --json id 2>$null | Out-Null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $env:RELEASE_TAG @assets --repo $repo --clobber
-          } else {
-            gh release create $env:RELEASE_TAG @assets --repo $repo --title "Harness Python Plugin $env:RELEASE_TAG" --generate-notes --target $env:GITHUB_SHA
-          }
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to publish Python plugin GitHub Release"
+            throw "Failed to publish GitHub Release"
           }
