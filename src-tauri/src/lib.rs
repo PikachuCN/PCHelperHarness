@@ -516,6 +516,7 @@ pub fn run() {
             network::export_network_report,
             system_overview::get_system_overview_section,
             system_overview::scan_driver_updates,
+            system_overview::set_printer_share,
             system_overview::open_system_settings,
             system_overview::export_system_overview_report,
         ])

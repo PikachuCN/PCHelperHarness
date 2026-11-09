@@ -297,6 +297,60 @@ ConvertTo-Json -InputObject ([ordered]@{
 }) -Depth 5 -Compress
 "#;
 
+const PRINTERS: &str = r#"
+$warnings = @()
+$printers = @()
+$defaultPrinterName = $null
+try {
+    $defaultPrinter = Get-CimInstance -ClassName Win32_Printer -ErrorAction Stop | Where-Object { $_.Default } | Select-Object -First 1
+    if ($null -ne $defaultPrinter) { $defaultPrinterName = [string]$defaultPrinter.Name }
+} catch { $warnings += "默认打印机读取失败：$($_.Exception.Message)" }
+try {
+    $printers = @(Get-Printer -ErrorAction Stop | ForEach-Object {
+        $typeCode = if ($null -eq $_.Type) { -1 } else { [int]$_.Type }
+        $printerType = switch ($typeCode) { 0 { 'Local' } 1 { 'Connection' } default { [string]$typeCode } }
+        $printerStatus = if ($_.PrinterStatus -eq 0) { 'Normal' } elseif ($_.PrinterStatus -eq 8) { 'Offline' } else { [string]$_.PrinterStatus }
+        [pscustomobject][ordered]@{
+            name = [string]$_.Name
+            printerType = $printerType
+            isLocal = $typeCode -eq 0
+            isDefault = -not [string]::IsNullOrWhiteSpace($defaultPrinterName) -and [string]$_.Name -eq $defaultPrinterName
+            driverName = $_.DriverName
+            portName = $_.PortName
+            status = $printerStatus
+            jobCount = if ($null -eq $_.JobCount) { 0 } else { [int]$_.JobCount }
+            shared = [bool]$_.Shared
+            shareName = $_.ShareName
+            published = [bool]$_.Published
+            workOffline = [bool]$_.WorkOffline
+            location = $_.Location
+            comment = $_.Comment
+        }
+    })
+} catch { $warnings += "打印机列表读取失败：$($_.Exception.Message)" }
+ConvertTo-Json -InputObject ([ordered]@{ printers = $printers; defaultPrinterName = $defaultPrinterName; warnings = $warnings }) -Depth 5 -Compress
+"#;
+
+pub(crate) const SET_PRINTER_SHARE: &str = r#"
+function Get-ExactPrinter($Name) {
+    $matchingPrinters = @(Get-Printer -ErrorAction Stop | Where-Object { [string]$_.Name -eq [string]$Name })
+    if ($matchingPrinters.Count -ne 1) { throw '未找到名称完全匹配的唯一本机打印机。' }
+    return $matchingPrinters[0]
+}
+$printerName = $env:HARNESS_PRINTER_NAME
+$shareName = $env:HARNESS_SHARE_NAME
+$shouldShare = $env:HARNESS_PRINTER_SHARED -eq 'true'
+$printer = Get-ExactPrinter $printerName
+if ([int]$printer.Type -ne 0) { throw '只能共享本机打印机，不能共享已连接的网络打印机。' }
+if ($shouldShare) {
+    Set-Printer -InputObject $printer -Shared $true -ShareName $shareName -ErrorAction Stop -Confirm:$false
+} else {
+    Set-Printer -InputObject $printer -Shared $false -ErrorAction Stop -Confirm:$false
+}
+$printer = Get-ExactPrinter $printerName
+ConvertTo-Json -InputObject ([ordered]@{ shared = [bool]$printer.Shared; shareName = $printer.ShareName }) -Depth 3 -Compress
+"#;
+
 const DRIVERS: &str = r#"
 $warnings = @()
 $devices = @()
@@ -744,6 +798,7 @@ pub(crate) fn get(section: &str) -> Option<&'static str> {
         "basic" => Some(BASIC),
         "activation" => Some(ACTIVATION),
         "hardware" => Some(HARDWARE),
+        "printers" => Some(PRINTERS),
         "drivers" => Some(DRIVERS),
         "software" => Some(SOFTWARE),
         "storage" => Some(STORAGE),

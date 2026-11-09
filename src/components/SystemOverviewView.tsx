@@ -9,6 +9,7 @@ import { IconButton } from "./Controls";
 import DriverSection from "./DriverSection";
 import NetworkDiagnosticsSection from "./NetworkDiagnosticsSection";
 import NetworkToolsSection from "./NetworkToolsSection";
+import PrinterSection from "./PrinterSection";
 import { ActivationSection, BasicSection, HardwareSection, NetworkSection, SecuritySection, SoftwareSection, StorageSection } from "./SystemOverviewSections";
 import { StatusBadge } from "./SystemOverviewCard";
 
@@ -24,7 +25,7 @@ interface OverviewGroup {
 
 const overviewGroups: readonly OverviewGroup[] = [
   { id: "system", label: "系统", icon: Monitor, sections: [{ id: "basic", label: "基础信息" }, { id: "activation", label: "激活情况" }] },
-  { id: "hardware", label: "硬件与存储", icon: Cpu, sections: [{ id: "hardware", label: "硬件信息" }, { id: "storage", label: "存储与磁盘" }, { id: "drivers", label: "驱动管理" }] },
+  { id: "hardware", label: "硬件与存储", icon: Cpu, sections: [{ id: "hardware", label: "硬件信息" }, { id: "storage", label: "存储与磁盘" }, { id: "drivers", label: "驱动管理" }, { id: "printers", label: "打印机管理" }] },
   { id: "network", label: "网络", icon: Wifi, sections: [{ id: "network", label: "网络连接" }, { id: "networkDiagnostics", label: "网络诊断" }, { id: "networkTools", label: "网络工具" }] },
   { id: "security", label: "安全", icon: ShieldCheck, sections: [{ id: "security", label: "安全与更新" }] },
   { id: "software", label: "软件", icon: AppWindow, sections: [{ id: "software", label: "软件安装情况" }] },
@@ -35,6 +36,7 @@ function renderOverviewSection(section: OverviewPanelId) {
     case "basic": return <BasicSection />;
     case "activation": return <ActivationSection />;
     case "hardware": return <HardwareSection />;
+    case "printers": return <PrinterSection />;
     case "storage": return <StorageSection />;
     case "drivers": return <DriverSection />;
     case "network": return <NetworkSection />;

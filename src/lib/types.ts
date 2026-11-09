@@ -159,7 +159,7 @@ export interface EnvInfo {
   availableShells: string[];
 }
 
-export type SystemOverviewSection = "basic" | "activation" | "hardware" | "drivers" | "software" | "storage" | "network" | "security";
+export type SystemOverviewSection = "basic" | "activation" | "hardware" | "printers" | "drivers" | "software" | "storage" | "network" | "security";
 export type SystemSettingsTarget = "activation" | "windowsUpdate" | "deviceManager" | "installedApps" | "network" | "security";
 
 export interface SystemBasicInfo {
@@ -221,6 +221,34 @@ export interface HardwareInfo {
   audio: { name: string | null; manufacturer: string | null; status: string | null }[];
   batteries: { name: string | null; chargePercent: number | null; status: string | null; designVoltageMv: number | null }[];
   warnings: string[];
+}
+
+export interface PrinterInfo {
+  name: string;
+  printerType: string | null;
+  isLocal: boolean;
+  isDefault: boolean;
+  driverName: string | null;
+  portName: string | null;
+  status: string | null;
+  jobCount: number;
+  shared: boolean;
+  shareName: string | null;
+  published: boolean;
+  workOffline: boolean;
+  location: string | null;
+  comment: string | null;
+}
+
+export interface PrinterListInfo {
+  printers: PrinterInfo[];
+  defaultPrinterName: string | null;
+  warnings: string[];
+}
+
+export interface PrinterShareResponse {
+  shared: boolean;
+  shareName: string | null;
 }
 
 export interface DriverDeviceInfo {
@@ -320,12 +348,13 @@ export interface SecurityInfo {
   warnings: string[];
 }
 
-export type SystemOverviewData = SystemBasicInfo | ActivationInfo | HardwareInfo | DriverInfo | SoftwareInfo | StorageInfo | NetworkInfo | SecurityInfo;
+export type SystemOverviewData = SystemBasicInfo | ActivationInfo | HardwareInfo | PrinterListInfo | DriverInfo | SoftwareInfo | StorageInfo | NetworkInfo | SecurityInfo;
 
 export type SystemOverviewSectionResponse =
   | { section: "basic"; data: SystemBasicInfo }
   | { section: "activation"; data: ActivationInfo }
   | { section: "hardware"; data: HardwareInfo }
+  | { section: "printers"; data: PrinterListInfo }
   | { section: "drivers"; data: DriverInfo }
   | { section: "software"; data: SoftwareInfo }
   | { section: "storage"; data: StorageInfo }
@@ -494,6 +523,7 @@ export interface IpcCommandMap {
   get_env_info: { args: Record<string, never>; result: EnvInfo };
   get_system_overview_section: { args: { section: SystemOverviewSection }; result: SystemOverviewSectionResponse };
   scan_driver_updates: { args: Record<string, never>; result: DriverUpdateScanResult };
+  set_printer_share: { args: { name: string; shareName?: string; shared: boolean }; result: PrinterShareResponse };
   open_system_settings: { args: { target: SystemSettingsTarget }; result: void };
   export_system_overview_report: { args: { content: string }; result: string };
   run_network_test: { args: { taskId: string; request: NetworkTestRequest }; result: NetworkTestResult };

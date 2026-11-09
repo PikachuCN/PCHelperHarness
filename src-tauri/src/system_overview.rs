@@ -18,6 +18,7 @@ enum OverviewSection {
     Basic,
     Activation,
     Hardware,
+    Printers,
     Drivers,
     Software,
     Storage,
@@ -31,13 +32,14 @@ impl OverviewSection {
             "basic" => Ok(Self::Basic),
             "activation" => Ok(Self::Activation),
             "hardware" => Ok(Self::Hardware),
+            "printers" => Ok(Self::Printers),
             "drivers" => Ok(Self::Drivers),
             "software" => Ok(Self::Software),
             "storage" => Ok(Self::Storage),
             "network" => Ok(Self::Network),
             "security" => Ok(Self::Security),
             _ => Err(format!(
-                "不支持的系统概况分区：{value}；仅支持 basic、activation、hardware、drivers、software、storage、network、security"
+                "不支持的系统概况分区：{value}；仅支持 basic、activation、hardware、printers、drivers、software、storage、network、security"
             )),
         }
     }
@@ -47,6 +49,7 @@ impl OverviewSection {
             Self::Basic => "basic",
             Self::Activation => "activation",
             Self::Hardware => "hardware",
+            Self::Printers => "printers",
             Self::Drivers => "drivers",
             Self::Software => "software",
             Self::Storage => "storage",
@@ -59,7 +62,12 @@ impl OverviewSection {
         match self {
             Self::Basic => 30,
             Self::Activation | Self::Security => 90,
-            Self::Hardware | Self::Drivers | Self::Software | Self::Storage | Self::Network => 60,
+            Self::Hardware
+            | Self::Printers
+            | Self::Drivers
+            | Self::Software
+            | Self::Storage
+            | Self::Network => 60,
         }
     }
 }
@@ -120,6 +128,49 @@ pub async fn scan_driver_updates() -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(collect_driver_update_scan)
         .await
         .map_err(|error| format!("驱动更新扫描任务失败：{error}"))?
+}
+
+#[tauri::command]
+pub async fn set_printer_share(
+    name: String,
+    share_name: Option<String>,
+    shared: bool,
+) -> Result<Value, String> {
+    validate_printer_name(&name)?;
+    if shared {
+        validate_share_name(share_name.as_deref().unwrap_or(""))?;
+    }
+    let share_name = share_name.unwrap_or_default();
+    tauri::async_runtime::spawn_blocking(move || change_printer_share(name, share_name, shared))
+        .await
+        .map_err(|error| format!("打印机共享任务失败：{error}"))?
+}
+
+fn validate_printer_name(value: &str) -> Result<(), String> {
+    let valid = !value.is_empty()
+        && value.trim() == value
+        && value.chars().count() <= 220
+        && !value.chars().any(|character| {
+            character.is_control() || matches!(character, '\\' | '/' | ';' | '\'' | '"' | '`' | '$')
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err("打印机名称无效：请使用本机打印机的完整原始名称".to_string())
+    }
+}
+
+fn validate_share_name(value: &str) -> Result<(), String> {
+    let valid = !value.is_empty()
+        && value.len() <= 80
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err("共享名须为 1–80 个字母、数字、点、下划线或连字符".to_string())
+    }
 }
 
 #[tauri::command]
@@ -184,10 +235,35 @@ fn collect_driver_update_scan() -> Result<Value, String> {
 }
 
 #[cfg(windows)]
+fn change_printer_share(name: String, share_name: String, shared: bool) -> Result<Value, String> {
+    let shared_value = if shared { "true" } else { "false" };
+    run_powershell_json_with_environment(
+        "printerShare",
+        crate::system_overview_scripts::SET_PRINTER_SHARE,
+        30,
+        &[
+            ("HARNESS_PRINTER_NAME", name.as_str()),
+            ("HARNESS_SHARE_NAME", share_name.as_str()),
+            ("HARNESS_PRINTER_SHARED", shared_value),
+        ],
+    )
+}
+
+#[cfg(windows)]
 fn run_powershell_json(
     section_name: &str,
     script: &str,
     timeout_seconds: u64,
+) -> Result<Value, String> {
+    run_powershell_json_with_environment(section_name, script, timeout_seconds, &[])
+}
+
+#[cfg(windows)]
+fn run_powershell_json_with_environment(
+    section_name: &str,
+    script: &str,
+    timeout_seconds: u64,
+    environment: &[(&str, &str)],
 ) -> Result<Value, String> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
     use std::io::Read as _;
@@ -217,6 +293,9 @@ fn run_powershell_json(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .creation_flags(CREATE_NO_WINDOW);
+    for (key, value) in environment {
+        process.env(key, value);
+    }
     let mut child = process
         .spawn()
         .map_err(|error| format!("无法启动 PowerShell 采集 {section_name}：{error}"))?;
@@ -300,6 +379,15 @@ fn collect_driver_update_scan() -> Result<Value, String> {
     Err("驱动更新扫描仅支持 Windows".to_string())
 }
 
+#[cfg(not(windows))]
+fn change_printer_share(
+    _name: String,
+    _share_name: String,
+    _shared: bool,
+) -> Result<Value, String> {
+    Err("打印机共享仅支持 Windows".to_string())
+}
+
 #[cfg(windows)]
 fn open_settings_target(target: SettingsTarget) -> Result<(), String> {
     if let Some(uri) = target.settings_uri() {
@@ -347,6 +435,7 @@ mod tests {
             "basic",
             "activation",
             "hardware",
+            "printers",
             "drivers",
             "software",
             "storage",
@@ -428,6 +517,57 @@ mod tests {
         assert!(script.contains("IPv4Connectivity -eq 'Internet'"));
         assert!(!script.contains("IPv4Connectivity -in @('LocalNetwork', 'Internet')"));
         assert!(script.contains("-AddressFamily IPv4"));
+    }
+
+    #[test]
+    fn printer_share_arguments_are_validated() {
+        for name in [
+            "HP LaserJet",
+            "办公室打印机 (2F)",
+            "Microsoft Print to PDF",
+            "Printer [Office] *",
+        ] {
+            assert!(validate_printer_name(name).is_ok(), "{name}");
+        }
+        for name in ["", " HP", "HP ", "HP;calc", "HP$HOME", "HP\nCMD"] {
+            assert!(validate_printer_name(name).is_err(), "{name:?}");
+        }
+        for name in ["OfficePrinter", "HP-LaserJet_2", "printer.local"] {
+            assert!(validate_share_name(name).is_ok(), "{name}");
+        }
+        for name in ["", "two words", "printer;calc", "printer/name", "打印机"] {
+            assert!(validate_share_name(name).is_err(), "{name}");
+        }
+        assert!(validate_share_name(&"a".repeat(81)).is_err());
+    }
+
+    #[test]
+    fn printer_scripts_use_fixed_commands_and_environment_values() {
+        let read_script = crate::system_overview_scripts::get("printers").unwrap();
+        assert!(read_script.contains("Get-Printer"));
+        assert!(read_script.contains("isLocal = $typeCode -eq 0"));
+        assert!(!read_script.contains("Set-Printer"));
+        let share_script = crate::system_overview_scripts::SET_PRINTER_SHARE;
+        assert!(share_script.contains("$env:HARNESS_PRINTER_NAME"));
+        assert!(share_script.contains("$env:HARNESS_SHARE_NAME"));
+        assert!(share_script.contains("Set-Printer -InputObject $printer"));
+        assert!(share_script.contains("Where-Object { [string]$_.Name -eq [string]$Name }"));
+        assert!(!share_script.contains("Get-Printer -Name $printerName"));
+        assert!(!share_script.contains("Set-Printer -Name $printerName"));
+        assert!(!share_script.contains("Invoke-Expression"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn printers_script_returns_json_on_windows() {
+        let data = collect_section(OverviewSection::Printers).unwrap();
+        assert!(data["printers"].is_array());
+        assert!(data["warnings"].is_array());
+        for printer in data["printers"].as_array().unwrap() {
+            assert!(printer["name"].is_string());
+            assert!(printer["isLocal"].is_boolean());
+            assert!(printer["shared"].is_boolean());
+        }
     }
 
     #[test]

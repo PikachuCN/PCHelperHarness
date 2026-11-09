@@ -1,5 +1,5 @@
 import { emitMockEvent } from "./events";
-import { mockDriverUpdateScan, mockSystemOverviewSection } from "./mockSystemOverview";
+import { mockDriverUpdateScan, mockSetPrinterShare, mockSystemOverviewSection } from "./mockSystemOverview";
 import { mockCancelNetworkTask, mockRunNetworkDiagnostic, mockRunNetworkTest } from "./mockNetwork";
 import type {
   AppConfig,
@@ -364,6 +364,11 @@ export async function mockInvoke<K extends IpcCommand>(command: K, rawArgs: IpcC
     case "scan_driver_updates":
       await new Promise((resolve) => window.setTimeout(resolve, 650));
       return mockDriverUpdateScan();
+    case "set_printer_share": {
+      const args = rawArgs as IpcCommandMap["set_printer_share"]["args"];
+      await new Promise((resolve) => window.setTimeout(resolve, 450));
+      return mockSetPrinterShare(args.name, args.shareName, args.shared);
+    }
     case "open_system_settings": return undefined;
     case "export_system_overview_report": return "C:\\Users\\User\\Documents\\Harness\\系统概况-脱敏.md";
     case "run_network_test": {

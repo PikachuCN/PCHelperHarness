@@ -1,4 +1,4 @@
-import type { ActivationInfo, DriverInfo, HardwareInfo, NetworkInfo, SecurityInfo, SoftwareInfo, StorageInfo, SystemBasicInfo, SystemOverviewSnapshot } from "./types";
+import type { ActivationInfo, DriverInfo, HardwareInfo, NetworkInfo, PrinterListInfo, SecurityInfo, SoftwareInfo, StorageInfo, SystemBasicInfo, SystemOverviewSnapshot } from "./types";
 import { boolLabel, displayText, driverProblemLabel, formatBytes, formatDateOnly, formatDateTime, formatUptime, licenseStatusLabel, percentUsed, softwareCategoryLabel } from "./systemOverviewFormat";
 
 function sectionData<T>(snapshot: SystemOverviewSnapshot, section: keyof SystemOverviewSnapshot): T | undefined {
@@ -93,6 +93,7 @@ export function buildSystemOverviewMarkdown(snapshot: SystemOverviewSnapshot): s
   const activation = sectionData<ActivationInfo>(snapshot, "activation");
   const hardware = sectionData<HardwareInfo>(snapshot, "hardware");
   const drivers = sectionData<DriverInfo>(snapshot, "drivers");
+  const printers = sectionData<PrinterListInfo>(snapshot, "printers");
   const software = sectionData<SoftwareInfo>(snapshot, "software");
   const storage = sectionData<StorageInfo>(snapshot, "storage");
   const network = sectionData<NetworkInfo>(snapshot, "network");
@@ -166,6 +167,11 @@ export function buildSystemOverviewMarkdown(snapshot: SystemOverviewSnapshot): s
   if (!unavailable(lines, Boolean(storage))) {
     table(lines, ["盘符", "卷标", "文件系统", "总容量", "剩余", "已用比例"], storage!.volumes.map((item) => [item.driveLetter, item.name, item.fileSystem, formatBytes(item.sizeBytes), formatBytes(item.freeBytes), `${percentUsed(item.sizeBytes, item.freeBytes).toFixed(0)}%`]));
     table(lines, ["物理磁盘", "类型", "总线", "容量", "健康状态"], storage!.physicalDisks.map((item) => [item.model, item.mediaType, item.busType, formatBytes(item.sizeBytes), item.healthStatus || item.operationalStatus]));
+  }
+
+  lines.push("## 打印机管理", "");
+  if (!unavailable(lines, Boolean(printers))) {
+    table(lines, ["打印机", "类型", "驱动", "默认", "共享状态", "脱机"], printers!.printers.map((item) => [item.name, item.isLocal ? "本机" : item.printerType, item.driverName, item.isDefault ? "是" : "否", item.shared ? `已共享（${displayText(item.shareName)}）` : "未共享", item.workOffline ? "是" : "否"]));
   }
 
   lines.push("## 网络与连接", "");

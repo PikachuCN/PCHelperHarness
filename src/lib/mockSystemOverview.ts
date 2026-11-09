@@ -56,6 +56,15 @@ const data = {
     batteries: [{ name: "LNV-5B10W51866", chargePercent: 86, status: "Good", designVoltageMv: 15_480 }],
     warnings: [],
   },
+  printers: {
+    printers: [
+      { name: "HP LaserJet Pro MFP M428dw", printerType: "Local", isLocal: true, isDefault: true, driverName: "HP LaserJet Pro MFP M428fdw PCL 6", portName: "WSD-Printer", status: "Normal", jobCount: 0, shared: false, shareName: null, published: false, workOffline: false, location: "二楼办公区", comment: "黑白激光打印机" },
+      { name: "Microsoft Print to PDF", printerType: "Local", isLocal: true, isDefault: false, driverName: "Microsoft Print To PDF", portName: "PORTPROMPT:", status: "Normal", jobCount: 0, shared: false, shareName: null, published: false, workOffline: false, location: null, comment: null },
+      { name: "办公室共享打印机", printerType: "Local", isLocal: true, isDefault: false, driverName: "Generic / Text Only", portName: "USB001", status: "Normal", jobCount: 1, shared: true, shareName: "OfficePrinter", published: true, workOffline: false, location: "一楼文印区", comment: null },
+    ],
+    defaultPrinterName: "HP LaserJet Pro MFP M428dw",
+    warnings: [],
+  },
   drivers: {
     summary: { totalDevices: 168, driverCount: 164, problemCount: 1, missingDriverCount: 1, unsignedDriverCount: 0 },
     problems: [{ deviceId: "USB\\VID_046D&PID_C534\\MOCK", deviceName: "USB 输入设备", className: "HID", manufacturer: "Logitech", provider: null, version: null, driverDate: null, status: "Error", problemCode: 28 }],
@@ -133,8 +142,23 @@ const data = {
   },
 } as const;
 
+const printerShareOverrides = new Map<string, { shared: boolean; shareName: string | null }>();
+
 export function mockSystemOverviewSection(section: SystemOverviewSection): SystemOverviewSectionResponse {
-  return structuredClone({ section, data: data[section] }) as SystemOverviewSectionResponse;
+  const response = structuredClone({ section, data: data[section] }) as SystemOverviewSectionResponse;
+  if (response.section === "printers") {
+    response.data.printers = response.data.printers.map((printer) => ({ ...printer, ...printerShareOverrides.get(printer.name) }));
+  }
+  return response;
+}
+
+export function mockSetPrinterShare(name: string, shareName: string | undefined, shared: boolean) {
+  const printer = data.printers.printers.find((item) => item.name === name);
+  if (!printer) throw new Error("未找到指定的本机打印机");
+  if (!printer.isLocal) throw new Error("只能共享本机打印机");
+  const nextShareName = shared ? shareName?.trim() || "Printer" : null;
+  printerShareOverrides.set(name, { shared, shareName: nextShareName });
+  return { shared, shareName: nextShareName };
 }
 
 export function mockDriverUpdateScan(): DriverUpdateScanResult {

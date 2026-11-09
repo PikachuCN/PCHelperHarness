@@ -30,7 +30,8 @@ interface ToastState {
   tone: "info" | "success" | "error";
 }
 
-export const systemOverviewSections: SystemOverviewSection[] = ["basic", "activation", "hardware", "drivers", "software", "storage", "network", "security"];
+export const systemOverviewSections: SystemOverviewSection[] = ["basic", "activation", "hardware", "printers", "drivers", "software", "storage", "network", "security"];
+const systemOverviewRequestIds = new Map<SystemOverviewSection, number>();
 
 interface HarnessState {
   initialized: boolean;
@@ -544,7 +545,8 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   loadSystemOverviewSection: async (section, force = false) => {
     const current = get().systemOverview[section];
     if (!force && (current?.status === "loading" || current?.data)) return;
-    if (current?.status === "loading") return;
+    const requestId = (systemOverviewRequestIds.get(section) ?? 0) + 1;
+    systemOverviewRequestIds.set(section, requestId);
     set((state) => ({
       systemOverview: {
         ...state.systemOverview,
@@ -553,6 +555,7 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
     }));
     try {
       const response = await ipcInvoke("get_system_overview_section", { section });
+      if (systemOverviewRequestIds.get(section) !== requestId) return;
       const data = section === "drivers" && response.section === "drivers"
         ? { ...response.data, updateScan: get().driverUpdateScan.data ?? null }
         : response.data;
@@ -563,6 +566,7 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
         },
       }));
     } catch (error) {
+      if (systemOverviewRequestIds.get(section) !== requestId) return;
       set((state) => ({
         systemOverview: {
           ...state.systemOverview,
