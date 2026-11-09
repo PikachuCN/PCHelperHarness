@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod config;
 pub mod llm;
+pub mod network;
 pub mod platform;
 pub mod plugins;
 pub mod risk;
@@ -23,6 +24,7 @@ pub struct AppState {
     config: RwLock<Config>,
     approvals: ApprovalGate,
     turns: Mutex<HashMap<String, CancellationToken>>,
+    pub(crate) network_tasks: Mutex<HashMap<String, CancellationToken>>,
     resume_session: Option<String>,
 }
 
@@ -461,6 +463,7 @@ pub fn run() {
             config: RwLock::new(loaded.config),
             approvals: ApprovalGate::default(),
             turns: Mutex::new(HashMap::new()),
+            network_tasks: Mutex::new(HashMap::new()),
             resume_session,
         })
         .setup(move |app| {
@@ -507,6 +510,10 @@ pub fn run() {
             open_config_dir,
             get_env_info,
             restart_as_admin,
+            network::run_network_test,
+            network::run_network_diagnostic,
+            network::cancel_network_task,
+            network::export_network_report,
             system_overview::get_system_overview_section,
             system_overview::scan_driver_updates,
             system_overview::open_system_settings,

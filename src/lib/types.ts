@@ -1,3 +1,5 @@
+import type { NetworkDiagnosticReport, NetworkProgressEvent, NetworkTestRequest, NetworkTestResult } from "./networkTypes";
+
 export type ID = string;
 export type RiskLevel = "l0" | "l1" | "l2" | "l3";
 export type ApprovalMode = "manual" | "auto";
@@ -456,6 +458,7 @@ export interface HarnessEventMap {
   turn_done: TurnDoneEvent;
   config_path_fallback: ConfigPathFallbackEvent;
   config_warning: ConfigWarningEvent;
+  network_progress: NetworkProgressEvent;
 }
 
 export type HarnessEventName = keyof HarnessEventMap;
@@ -492,6 +495,10 @@ export interface IpcCommandMap {
   scan_driver_updates: { args: Record<string, never>; result: DriverUpdateScanResult };
   open_system_settings: { args: { target: SystemSettingsTarget }; result: void };
   export_system_overview_report: { args: { content: string }; result: string };
+  run_network_test: { args: { taskId: string; request: NetworkTestRequest }; result: NetworkTestResult };
+  run_network_diagnostic: { args: { taskId: string }; result: NetworkDiagnosticReport };
+  cancel_network_task: { args: { taskId: string }; result: void };
+  export_network_report: { args: { content: string; format: "markdown" | "json" }; result: string };
   restart_as_admin: { args: { sessionId: ID | null }; result: void };
 }
 

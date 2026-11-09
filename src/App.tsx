@@ -27,6 +27,7 @@ const eventNames: HarnessEventName[] = [
   "turn_done",
   "config_path_fallback",
   "config_warning",
+  "network_progress",
 ];
 
 function Toast() {

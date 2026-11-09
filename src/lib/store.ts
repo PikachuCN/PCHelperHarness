@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { ipcInvoke } from "./ipc";
+import type { NetworkDiagnosticState, NetworkHistoryEntry, NetworkProgressEvent, NetworkTestRequest, NetworkToolId, NetworkToolState } from "./networkTypes";
 import type {
   AppConfig,
   ApprovalMode,
@@ -51,6 +52,11 @@ interface HarnessState {
   activeView: "chat" | "systemOverview";
   systemOverview: Partial<Record<SystemOverviewSection, SystemOverviewSectionState>>;
   driverUpdateScan: SystemOverviewSectionState<DriverUpdateScanResult>;
+  networkTools: Partial<Record<NetworkToolId, NetworkToolState>>;
+  networkDiagnostic: NetworkDiagnosticState;
+  networkHistory: NetworkHistoryEntry[];
+  networkHistoryEnabled: boolean;
+  networkPrivacyAcknowledged: boolean;
   selectedModel: string;
   availableModels: string[];
   approvalMode: ApprovalMode;
@@ -72,6 +78,14 @@ interface HarnessState {
   refreshSystemOverview: () => void;
   scanDriverUpdates: () => Promise<void>;
   exportSystemOverview: (content: string) => Promise<void>;
+  runNetworkTest: (request: NetworkTestRequest) => Promise<void>;
+  runNetworkDiagnostic: () => Promise<void>;
+  cancelNetworkTask: (taskId: string) => Promise<void>;
+  clearNetworkHistory: () => void;
+  deleteNetworkHistory: (id: string) => void;
+  setNetworkHistoryEnabled: (enabled: boolean) => void;
+  acknowledgeNetworkPrivacy: () => void;
+  exportNetworkReport: (content: string, format: "markdown" | "json") => Promise<void>;
   openSystemSettings: (target: SystemSettingsTarget) => Promise<void>;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -192,6 +206,46 @@ function advanceActivity(
   };
 }
 
+const networkHistoryKey = "harness.network.history.v1";
+const networkPreferencesKey = "harness.network.preferences.v1";
+
+function loadNetworkHistory(): NetworkHistoryEntry[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(networkHistoryKey) ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as NetworkHistoryEntry[]).filter((entry) => entry && typeof entry.id === "string" && entry.result && entry.result.data !== null && typeof entry.result.data === "object").slice(0, 30);
+  } catch {
+    return [];
+  }
+}
+
+function loadNetworkPreferences(): { historyEnabled: boolean; privacyAcknowledged: boolean } {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(networkPreferencesKey) ?? "{}") as { historyEnabled?: boolean; privacyAcknowledged?: boolean };
+    return { historyEnabled: parsed.historyEnabled !== false, privacyAcknowledged: parsed.privacyAcknowledged === true };
+  } catch {
+    return { historyEnabled: true, privacyAcknowledged: false };
+  }
+}
+
+function saveNetworkPreferences(historyEnabled: boolean, privacyAcknowledged: boolean) {
+  try {
+    window.localStorage.setItem(networkPreferencesKey, JSON.stringify({ historyEnabled, privacyAcknowledged }));
+  } catch {
+    // Storage can be unavailable in restricted previews; tests still work for this session.
+  }
+}
+
+function saveNetworkHistory(history: NetworkHistoryEntry[]) {
+  try {
+    window.localStorage.setItem(networkHistoryKey, JSON.stringify(history.slice(0, 30)));
+  } catch {
+    // A full or disabled local storage must not interrupt an active network test.
+  }
+}
+
+const initialNetworkPreferences = loadNetworkPreferences();
+
 export const useHarnessStore = create<HarnessState>((set, get) => ({
   initialized: false,
   loadingSession: false,
@@ -212,6 +266,11 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   activeView: "chat",
   systemOverview: {},
   driverUpdateScan: { status: "idle" },
+  networkTools: {},
+  networkDiagnostic: { status: "idle" },
+  networkHistory: loadNetworkHistory(),
+  networkHistoryEnabled: initialNetworkPreferences.historyEnabled,
+  networkPrivacyAcknowledged: initialNetworkPreferences.privacyAcknowledged,
   selectedModel: "",
   availableModels: [],
   approvalMode: "manual",
@@ -549,6 +608,125 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
     }
   },
 
+  runNetworkTest: async (request) => {
+    const tool = request.tool;
+    const speedRunning = get().networkTools.speed?.status === "running";
+    const lightTaskRunning = Object.values(get().networkTools).some((task) => task?.status === "running" && task.request?.tool !== "speed")
+      || get().networkDiagnostic.status === "running";
+    if ((tool === "speed" && lightTaskRunning) || (tool !== "speed" && speedRunning)) {
+      get().notify(tool === "speed" ? "请先等待或停止其他网络测试，再开始测速" : "测速正在独占网络任务，请先停止测速", "info");
+      return;
+    }
+    const previous = get().networkTools[tool];
+    if (previous?.status === "running" && previous.taskId) {
+      try { await ipcInvoke("cancel_network_task", { taskId: previous.taskId }); } catch { /* The old task may already have finished. */ }
+    }
+    const taskId = crypto.randomUUID();
+    set((state) => ({
+      networkTools: {
+        ...state.networkTools,
+        [tool]: { status: "running", taskId, request, result: previous?.result, progress: undefined, error: undefined },
+      },
+    }));
+    try {
+      const result = await ipcInvoke("run_network_test", { taskId, request });
+      if (get().networkTools[tool]?.taskId !== taskId) return;
+      const hasStructuredData = result.data !== null && typeof result.data === "object";
+      set((state) => ({
+        networkTools: {
+          ...state.networkTools,
+          [tool]: { ...state.networkTools[tool], status: result.status, result: hasStructuredData ? result : previous?.result, error: result.error ?? undefined },
+        },
+      }));
+      if (hasStructuredData && result.status !== "cancelled" && get().networkHistoryEnabled) {
+        const entry: NetworkHistoryEntry = { id: result.taskId, tool, target: result.target, completedAt: result.finishedAt, status: result.status, result };
+        const history = [entry, ...get().networkHistory.filter((item) => item.id !== entry.id)].slice(0, 30);
+        set({ networkHistory: history });
+        saveNetworkHistory(history);
+      }
+    } catch (error) {
+      const current = get().networkTools[tool];
+      if (current?.taskId !== taskId || current.status === "cancelled") return;
+      set((state) => ({ networkTools: { ...state.networkTools, [tool]: { ...current, status: "error", error: String(error) } } }));
+    }
+  },
+
+  runNetworkDiagnostic: async () => {
+    const state = get();
+    if (state.networkTools.speed?.status === "running") {
+      get().notify("测速正在进行，请先停止测速再启动一键诊断", "info");
+      return;
+    }
+    if (state.networkDiagnostic.status === "running") return;
+    const taskId = crypto.randomUUID();
+    set({ networkDiagnostic: { status: "running", taskId, report: state.networkDiagnostic.report, progress: undefined, error: undefined } });
+    try {
+      const report = await ipcInvoke("run_network_diagnostic", { taskId });
+      if (get().networkDiagnostic.taskId !== taskId) return;
+      const safeReport = { ...report, results: report.results.filter((result) => result.status !== "cancelled" && result.data !== null && typeof result.data === "object") };
+      set({ networkDiagnostic: { status: report.status === "normal" ? "success" : report.status, report: safeReport, error: undefined } });
+      if (report.status !== "cancelled" && get().networkHistoryEnabled) {
+        const entries = safeReport.results.map((result): NetworkHistoryEntry => ({ id: result.taskId, tool: result.tool, target: result.target, completedAt: result.finishedAt, status: result.status, result }));
+        const existing = get().networkHistory.filter((item) => !entries.some((entry) => entry.id === item.id));
+        const history = [...entries.reverse(), ...existing].slice(0, 30);
+        set({ networkHistory: history });
+        saveNetworkHistory(history);
+      }
+      if (report.status !== "cancelled") {
+        get().notify(report.status === "normal" ? "网络诊断完成，未发现明显异常" : "网络诊断完成，请查看异常层级与建议", report.status === "error" ? "error" : "success");
+      }
+    } catch (error) {
+      if (get().networkDiagnostic.taskId !== taskId || get().networkDiagnostic.status === "cancelled") return;
+      set((current) => ({ networkDiagnostic: { ...current.networkDiagnostic, status: "error", error: String(error) } }));
+    }
+  },
+
+  cancelNetworkTask: async (taskId) => {
+    set((state) => {
+      const networkTools = { ...state.networkTools };
+      for (const [tool, task] of Object.entries(networkTools) as [NetworkToolId, NetworkToolState][]) {
+        if (task.taskId === taskId && task.status === "running") networkTools[tool] = { ...task, status: "cancelled" };
+      }
+      return {
+        networkTools,
+        networkDiagnostic: state.networkDiagnostic.taskId === taskId && state.networkDiagnostic.status === "running"
+          ? { ...state.networkDiagnostic, status: "cancelled" }
+          : state.networkDiagnostic,
+      };
+    });
+    try {
+      await ipcInvoke("cancel_network_task", { taskId });
+    } catch (error) {
+      get().notify(`停止网络测试失败：${String(error)}`, "error");
+    }
+  },
+
+  clearNetworkHistory: () => {
+    set({ networkHistory: [] });
+    saveNetworkHistory([]);
+  },
+  deleteNetworkHistory: (id) => {
+    const history = get().networkHistory.filter((item) => item.id !== id);
+    set({ networkHistory: history });
+    saveNetworkHistory(history);
+  },
+  setNetworkHistoryEnabled: (networkHistoryEnabled) => {
+    set({ networkHistoryEnabled });
+    saveNetworkPreferences(networkHistoryEnabled, get().networkPrivacyAcknowledged);
+  },
+  acknowledgeNetworkPrivacy: () => {
+    set({ networkPrivacyAcknowledged: true });
+    saveNetworkPreferences(get().networkHistoryEnabled, true);
+  },
+  exportNetworkReport: async (content, format) => {
+    try {
+      const path = await ipcInvoke("export_network_report", { content, format });
+      get().notify(`网络报告已导出到 ${path}`, "success");
+    } catch (error) {
+      get().notify(`导出网络报告失败：${String(error)}`, "error");
+    }
+  },
+
   openSystemSettings: async (target) => {
     try {
       await ipcInvoke("open_system_settings", { target });
@@ -618,6 +796,23 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
     if (event === "config_warning") {
       const data = payload as HarnessEventMap["config_warning"];
       get().notify(data.message, "error");
+      return;
+    }
+    if (event === "network_progress") {
+      const data = payload as HarnessEventMap["network_progress"];
+      if (state.networkDiagnostic.taskId === data.taskId) {
+        set((current) => current.networkDiagnostic.status === "running" ? { networkDiagnostic: { ...current.networkDiagnostic, progress: data } } : current);
+        return;
+      }
+      const tool = (Object.keys(state.networkTools) as NetworkToolId[]).find((key) => state.networkTools[key]?.taskId === data.taskId);
+      if (!tool) return;
+      set((current) => {
+        const task = current.networkTools[tool];
+        if (!task || task.status !== "running") return current;
+        const previousPoints = task.progress?.points ?? [];
+        const progress: NetworkProgressEvent = { ...data, points: [...previousPoints, ...data.points].slice(-240) };
+        return { networkTools: { ...current.networkTools, [tool]: { ...task, progress } } };
+      });
       return;
     }
     if (event === "session_updated") {

@@ -229,6 +229,8 @@
   gap: 18px;
   align-items: center;
   min-height: 38px;
+  overflow-x: auto;
+  scrollbar-width: thin;
   padding: 0 4px;
   margin-bottom: 12px;
   border-bottom: 1px solid var(--border);

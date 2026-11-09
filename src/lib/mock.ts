@@ -1,5 +1,6 @@
 import { emitMockEvent } from "./events";
 import { mockDriverUpdateScan, mockSystemOverviewSection } from "./mockSystemOverview";
+import { mockCancelNetworkTask, mockRunNetworkDiagnostic, mockRunNetworkTest } from "./mockNetwork";
 import type {
   AppConfig,
   ChatMessage,
@@ -365,6 +366,23 @@ export async function mockInvoke<K extends IpcCommand>(command: K, rawArgs: IpcC
       return mockDriverUpdateScan();
     case "open_system_settings": return undefined;
     case "export_system_overview_report": return "C:\\Users\\User\\Documents\\Harness\\系统概况-脱敏.md";
+    case "run_network_test": {
+      const args = rawArgs as IpcCommandMap["run_network_test"]["args"];
+      return mockRunNetworkTest(args.taskId, args.request);
+    }
+    case "run_network_diagnostic": {
+      const args = rawArgs as IpcCommandMap["run_network_diagnostic"]["args"];
+      return mockRunNetworkDiagnostic(args.taskId);
+    }
+    case "cancel_network_task": {
+      const args = rawArgs as IpcCommandMap["cancel_network_task"]["args"];
+      mockCancelNetworkTask(args.taskId);
+      return undefined;
+    }
+    case "export_network_report": {
+      const args = rawArgs as IpcCommandMap["export_network_report"]["args"];
+      return `C:\\Users\\User\\Documents\\Harness\\网络报告-模拟.${args.format === "json" ? "json" : "md"}`;
+    }
     default: {
       const exhaustive: never = command;
       throw new Error(`未支持的命令：${String(exhaustive)}`);
