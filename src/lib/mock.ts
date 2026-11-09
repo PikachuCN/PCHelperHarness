@@ -1,4 +1,5 @@
 import { emitMockEvent } from "./events";
+import { mockSystemOverviewSection } from "./mockSystemOverview";
 import type {
   AppConfig,
   ChatMessage,
@@ -354,6 +355,13 @@ export async function mockInvoke<K extends IpcCommand>(command: K, rawArgs: IpcC
     case "open_config_dir":
     case "restart_as_admin": return undefined;
     case "get_env_info": return { isAdmin: false, osVersion: "Windows 11 专业版 24H2", computerName: "DESKTOP-HARNESS", userName: "User", configPath: "C:\\Users\\User\\AppData\\Roaming\\Harness\\config.json", configUsedFallback: false, webview2Version: "142.0", resumeSessionId: null, availableShells: ["powershell", "cmd", "python"] };
+    case "get_system_overview_section": {
+      const { section } = rawArgs as IpcCommandMap["get_system_overview_section"]["args"];
+      await new Promise((resolve) => window.setTimeout(resolve, 260));
+      return mockSystemOverviewSection(section);
+    }
+    case "open_system_settings": return undefined;
+    case "export_system_overview_report": return "C:\\Users\\User\\Documents\\Harness\\系统概况-脱敏.md";
     default: {
       const exhaustive: never = command;
       throw new Error(`未支持的命令：${String(exhaustive)}`);

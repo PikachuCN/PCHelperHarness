@@ -3,6 +3,7 @@ import type { FormEvent, MouseEvent as ReactMouseEvent } from "react";
 import {
   Download,
   MessageSquareText,
+  Monitor,
   PanelLeftClose,
   Pencil,
   Plus,
@@ -45,6 +46,8 @@ export default function Sidebar() {
   const sessions = useHarnessStore((state) => state.sessions);
   const currentSessionId = useHarnessStore((state) => state.currentSessionId);
   const collapsed = useHarnessStore((state) => state.sidebarCollapsed);
+  const activeView = useHarnessStore((state) => state.activeView);
+  const openSystemOverview = useHarnessStore((state) => state.openSystemOverview);
   const envInfo = useHarnessStore((state) => state.envInfo);
   const newSession = useHarnessStore((state) => state.newSession);
   const creatingSession = useHarnessStore((state) => state.creatingSession);
@@ -116,6 +119,18 @@ export default function Sidebar() {
             {creatingSession ? "正在创建…" : "新对话"}
           </button>
         </div>
+        <div className="sidebar-overview-wrap">
+          <button
+            type="button"
+            className={`sidebar-overview-button ${activeView === "systemOverview" ? "is-active" : ""}`}
+            onClick={openSystemOverview}
+            aria-current={activeView === "systemOverview" ? "page" : undefined}
+            tabIndex={collapsed ? -1 : 0}
+          >
+            <Monitor size={17} />
+            <span>系统概况</span>
+          </button>
+        </div>
         <nav className="session-list" aria-label="历史对话">
           {groups.length === 0 && <p className="empty-sessions">还没有历史对话</p>}
           {groups.map((group) => (
@@ -123,7 +138,7 @@ export default function Sidebar() {
               <h2>{group.label}</h2>
               <ul>
                 {group.items.map((session) => (
-                  <li key={session.id} className={`session-item ${currentSessionId === session.id ? "is-current" : ""}`} onContextMenu={(event) => openContextMenu(event, session)}>
+                  <li key={session.id} className={`session-item ${activeView === "chat" && currentSessionId === session.id ? "is-current" : ""}`} onContextMenu={(event) => openContextMenu(event, session)}>
                     {editingId === session.id ? (
                       <form className="rename-form" onSubmit={(event) => void submitRename(event, session.id)}>
                         <input
@@ -144,7 +159,7 @@ export default function Sidebar() {
                           type="button"
                           className="session-open"
                           onClick={() => void selectSession(session.id)}
-                          aria-current={currentSessionId === session.id ? "page" : undefined}
+                          aria-current={activeView === "chat" && currentSessionId === session.id ? "page" : undefined}
                           tabIndex={collapsed ? -1 : 0}
                         >
                           <span>{session.title}</span>

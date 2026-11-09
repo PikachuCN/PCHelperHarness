@@ -13,6 +13,9 @@ import type {
   RiskAssessment,
   SessionSummary,
   SkillInfo,
+  SystemOverviewSection,
+  SystemOverviewSectionState,
+  SystemSettingsTarget,
   ToolRun,
   TurnActivity,
   TurnPhase,
@@ -23,6 +26,8 @@ interface ToastState {
   message: string;
   tone: "info" | "success" | "error";
 }
+
+export const systemOverviewSections: SystemOverviewSection[] = ["basic", "activation", "hardware", "software", "storage", "network", "security"];
 
 interface HarnessState {
   initialized: boolean;
@@ -41,6 +46,8 @@ interface HarnessState {
   pluginCatalog: PluginCatalog | null;
   sidebarCollapsed: boolean;
   settingsOpen: boolean;
+  activeView: "chat" | "systemOverview";
+  systemOverview: Partial<Record<SystemOverviewSection, SystemOverviewSectionState>>;
   selectedModel: string;
   availableModels: string[];
   approvalMode: ApprovalMode;
@@ -57,6 +64,11 @@ interface HarnessState {
   renameSession: (sessionId: string, title: string) => Promise<boolean>;
   deleteSession: (sessionId: string) => Promise<void>;
   exportSession: (sessionId: string) => Promise<void>;
+  openSystemOverview: () => void;
+  loadSystemOverviewSection: (section: SystemOverviewSection, force?: boolean) => Promise<void>;
+  refreshSystemOverview: () => void;
+  exportSystemOverview: (content: string) => Promise<void>;
+  openSystemSettings: (target: SystemSettingsTarget) => Promise<void>;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
@@ -193,6 +205,8 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   pluginCatalog: null,
   sidebarCollapsed: false,
   settingsOpen: false,
+  activeView: "chat",
+  systemOverview: {},
   selectedModel: "",
   availableModels: [],
   approvalMode: "manual",
@@ -233,12 +247,16 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
 
   newSession: async () => {
     const current = get();
-    if (current.creatingSession || current.sending) return;
+    if (current.creatingSession || current.sending) {
+      set({ activeView: "chat" });
+      return;
+    }
     if (current.currentSessionId && current.messages.length === 0) {
+      set({ activeView: "chat" });
       if (window.innerWidth <= 900) set({ sidebarCollapsed: true });
       return;
     }
-    set({ creatingSession: true });
+    set({ creatingSession: true, activeView: "chat" });
     try {
       const summary = await ipcInvoke("create_session", {});
       set((state) => ({
@@ -258,7 +276,11 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   },
 
   selectSession: async (sessionId) => {
-    if (get().currentSessionId === sessionId && !get().loadingSession) return;
+    set({ activeView: "chat" });
+    if (get().currentSessionId === sessionId && !get().loadingSession) {
+      if (window.innerWidth <= 900) set({ sidebarCollapsed: true });
+      return;
+    }
     set({ currentSessionId: sessionId, loadingSession: true, messages: [] });
     if (window.innerWidth <= 900) set({ sidebarCollapsed: true });
     try {
@@ -443,6 +465,64 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
       get().notify(`已导出到 ${path}`, "success");
     } catch (error) {
       get().notify(`导出失败：${String(error)}`, "error");
+    }
+  },
+
+  openSystemOverview: () => {
+    set({ activeView: "systemOverview" });
+    if (window.innerWidth <= 900) set({ sidebarCollapsed: true });
+    for (const section of systemOverviewSections) {
+      const current = get().systemOverview[section];
+      if (!current?.data && current?.status !== "loading") void get().loadSystemOverviewSection(section);
+    }
+  },
+
+  loadSystemOverviewSection: async (section, force = false) => {
+    const current = get().systemOverview[section];
+    if (!force && (current?.status === "loading" || current?.data)) return;
+    if (current?.status === "loading") return;
+    set((state) => ({
+      systemOverview: {
+        ...state.systemOverview,
+        [section]: { ...state.systemOverview[section], status: "loading", error: undefined },
+      },
+    }));
+    try {
+      const response = await ipcInvoke("get_system_overview_section", { section });
+      set((state) => ({
+        systemOverview: {
+          ...state.systemOverview,
+          [section]: { status: "success", data: response.data, loadedAt: new Date().toISOString() },
+        },
+      }));
+    } catch (error) {
+      set((state) => ({
+        systemOverview: {
+          ...state.systemOverview,
+          [section]: { ...state.systemOverview[section], status: "error", error: String(error) },
+        },
+      }));
+    }
+  },
+
+  refreshSystemOverview: () => {
+    for (const section of systemOverviewSections) void get().loadSystemOverviewSection(section, true);
+  },
+
+  exportSystemOverview: async (content) => {
+    try {
+      const path = await ipcInvoke("export_system_overview_report", { content });
+      get().notify(`脱敏报告已导出到 ${path}`, "success");
+    } catch (error) {
+      get().notify(`导出系统概况失败：${String(error)}`, "error");
+    }
+  },
+
+  openSystemSettings: async (target) => {
+    try {
+      await ipcInvoke("open_system_settings", { target });
+    } catch (error) {
+      get().notify(`无法打开系统设置：${String(error)}`, "error");
     }
   },
 

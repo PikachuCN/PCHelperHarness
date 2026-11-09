@@ -157,6 +157,136 @@ export interface EnvInfo {
   availableShells: string[];
 }
 
+export type SystemOverviewSection = "basic" | "activation" | "hardware" | "software" | "storage" | "network" | "security";
+export type SystemSettingsTarget = "activation" | "windowsUpdate" | "deviceManager" | "installedApps" | "network" | "security";
+
+export interface SystemBasicInfo {
+  osName: string | null;
+  displayVersion: string | null;
+  version: string | null;
+  build: string | null;
+  architecture: string | null;
+  deviceName: string | null;
+  userName: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  domain: string | null;
+  installDate: string | null;
+  lastBootTime: string | null;
+  uptimeSeconds: number;
+  timeZone: string | null;
+  locale: string | null;
+  powerShellVersion: string | null;
+  webView2Version: string | null;
+}
+
+export type LicenseStatus = "Licensed" | "Notification" | "Unlicensed" | "Grace" | "OutOfGrace" | "Unknown" | string;
+
+export interface WindowsLicenseInfo {
+  name: string | null;
+  version: string | null;
+  status: LicenseStatus | null;
+  statusCode: number | null;
+  licenseChannel: string | null;
+  licenseDescription: string | null;
+  expiresAt: string | null;
+  isDigitalLicense: boolean;
+}
+
+export interface OfficeLicenseInfo {
+  name: string | null;
+  status: LicenseStatus | null;
+  statusCode: number | null;
+  licenseChannel: string | null;
+  licenseDescription: string | null;
+  expiresAt: string | null;
+}
+
+export interface ActivationInfo {
+  windows: WindowsLicenseInfo | null;
+  office: OfficeLicenseInfo[];
+  warnings: string[];
+}
+
+export interface HardwareInfo {
+  processors: { name: string | null; manufacturer: string | null; cores: number | null; logicalProcessors: number | null; maxClockMHz: number | null }[];
+  motherboard: { manufacturer: string | null; product: string | null; version: string | null; serialNumber: string | null };
+  bios: { manufacturer: string | null; version: string | null; releaseDate: string | null; serialNumber: string | null };
+  memoryTotalBytes: number;
+  memoryModules: { capacityBytes: number | null; speedMHz: number | null; manufacturer: string | null; partNumber: string | null; bankLabel: string | null; deviceLocator: string | null; serialNumber: string | null }[];
+  graphics: { name: string | null; adapterRamBytes: number | null; driverVersion: string | null; videoMode: string | null; resolution: string | null }[];
+  audio: { name: string | null; manufacturer: string | null; status: string | null }[];
+  batteries: { name: string | null; chargePercent: number | null; status: string | null; designVoltageMv: number | null }[];
+  warnings: string[];
+}
+
+export interface CommonSoftwareInfo {
+  id: string;
+  name: string;
+  category: string;
+  installed: boolean;
+  version: string | null;
+  publisher: string | null;
+}
+
+export interface InstalledSoftwareInfo {
+  id: string;
+  name: string;
+  version: string | null;
+  publisher: string | null;
+  installDate: string | null;
+}
+
+export interface SoftwareInfo {
+  common: CommonSoftwareInfo[];
+  installed: InstalledSoftwareInfo[];
+  warnings: string[];
+}
+
+export interface StorageInfo {
+  volumes: { driveLetter: string; name: string | null; fileSystem: string | null; sizeBytes: number | null; freeBytes: number | null; driveType: number; healthStatus: string | null }[];
+  physicalDisks: { model: string | null; mediaType: string | null; busType: string | null; sizeBytes: number | null; healthStatus: string | null; operationalStatus: string | null; serialNumber: string | null; firmwareVersion: string | null }[];
+  warnings: string[];
+}
+
+export interface NetworkInfo {
+  isConnected: boolean;
+  profiles: { name: string | null; interfaceAlias: string | null; networkCategory: string | null; ipv4Connectivity: string | null }[];
+  adapters: { name: string | null; description: string | null; status: string | null; linkSpeed: string | null; macAddress: string | null; ipAddresses: string[]; gateways: string[]; dnsServers: string[] }[];
+  warnings: string[];
+}
+
+export interface SecurityInfo {
+  defender: { serviceEnabled: boolean; antivirusEnabled: boolean; realTimeProtectionEnabled: boolean; tamperProtected: boolean; signatureLastUpdated: string | null } | null;
+  firewallProfiles: { name: string | null; enabled: boolean }[];
+  uacEnabled: boolean | null;
+  tpm: { present: boolean; ready: boolean; enabled: boolean; activated: boolean; specVersion: string | null } | null;
+  secureBoot: { supported: boolean; enabled: boolean | null } | null;
+  lastUpdate: { hotfixId: string | null; installedOn: string | null; description: string | null } | null;
+  pendingReboot: boolean | null;
+  warnings: string[];
+}
+
+export type SystemOverviewData = SystemBasicInfo | ActivationInfo | HardwareInfo | SoftwareInfo | StorageInfo | NetworkInfo | SecurityInfo;
+
+export type SystemOverviewSectionResponse =
+  | { section: "basic"; data: SystemBasicInfo }
+  | { section: "activation"; data: ActivationInfo }
+  | { section: "hardware"; data: HardwareInfo }
+  | { section: "software"; data: SoftwareInfo }
+  | { section: "storage"; data: StorageInfo }
+  | { section: "network"; data: NetworkInfo }
+  | { section: "security"; data: SecurityInfo };
+
+export interface SystemOverviewSectionState<T = SystemOverviewData> {
+  status: "idle" | "loading" | "success" | "error";
+  data?: T;
+  error?: string;
+  loadedAt?: string;
+}
+
+export type SystemOverviewSnapshot = Partial<Record<SystemOverviewSection, SystemOverviewSectionState>>;
+
 export interface RunOutcome {
   sessionId: ID;
   turnId: ID;
@@ -307,6 +437,9 @@ export interface IpcCommandMap {
   open_skills_dir: { args: Record<string, never>; result: void };
   open_config_dir: { args: Record<string, never>; result: void };
   get_env_info: { args: Record<string, never>; result: EnvInfo };
+  get_system_overview_section: { args: { section: SystemOverviewSection }; result: SystemOverviewSectionResponse };
+  open_system_settings: { args: { target: SystemSettingsTarget }; result: void };
+  export_system_overview_report: { args: { content: string }; result: string };
   restart_as_admin: { args: { sessionId: ID | null }; result: void };
 }
 

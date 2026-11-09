@@ -5,6 +5,8 @@ pub mod platform;
 pub mod plugins;
 pub mod risk;
 pub mod skills;
+mod system_overview;
+mod system_overview_scripts;
 pub mod tools;
 
 use agent::approval::{ApprovalDecision, ApprovalGate, ApprovalResolution};
@@ -505,6 +507,9 @@ pub fn run() {
             open_config_dir,
             get_env_info,
             restart_as_admin,
+            system_overview::get_system_overview_section,
+            system_overview::open_system_settings,
+            system_overview::export_system_overview_report,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Harness");

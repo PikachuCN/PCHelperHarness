@@ -4,6 +4,7 @@ import Sidebar from "./components/Sidebar";
 import ChatView from "./components/ChatView";
 import Composer from "./components/Composer";
 import SettingsModal from "./components/SettingsModal";
+import SystemOverviewView from "./components/SystemOverviewView";
 import TextContextMenu from "./components/TextContextMenu";
 import { IconButton } from "./components/Controls";
 import { listenToHarnessEvent } from "./lib/events";
@@ -52,6 +53,7 @@ function Toast() {
 export default function App() {
   const initialize = useHarnessStore((state) => state.initialize);
   const settingsOpen = useHarnessStore((state) => state.settingsOpen);
+  const activeView = useHarnessStore((state) => state.activeView);
   const theme = useHarnessStore((state) => state.config?.appearance.theme ?? "system");
   const fontSize = useHarnessStore((state) => state.config?.appearance.fontSize ?? 14);
 
@@ -87,8 +89,7 @@ export default function App() {
     <div className="app-shell">
       <Sidebar />
       <div className="workspace">
-        <ChatView />
-        <Composer />
+        {activeView === "systemOverview" ? <SystemOverviewView /> : <><ChatView /><Composer /></>}
       </div>
       {settingsOpen && <SettingsModal />}
       <TextContextMenu />
