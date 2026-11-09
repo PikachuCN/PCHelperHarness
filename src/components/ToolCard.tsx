@@ -13,7 +13,7 @@ const statusLabels = {
 };
 
 export default function ToolCard({ tool }: { tool: ToolRun }) {
-  const [expanded, setExpanded] = useState(tool.status === "running");
+  const [expanded, setExpanded] = useState(tool.status === "running" || tool.status === "pending");
   const cancelTurn = useHarnessStore((state) => state.cancelTurn);
   const command = typeof tool.arguments.command === "string"
     ? tool.arguments.command
@@ -22,7 +22,7 @@ export default function ToolCard({ tool }: { tool: ToolRun }) {
       : JSON.stringify(tool.arguments, null, 2);
 
   useEffect(() => {
-    if (tool.status === "running") setExpanded(true);
+    setExpanded(tool.status === "running" || tool.status === "pending");
   }, [tool.status]);
 
   return (
