@@ -41,6 +41,7 @@ where
 
     let request = api_request(
         client.post(endpoint(&provider.base_url, "chat/completions")),
+        provider,
         api_key,
     )
     .json(&Value::Object(body));

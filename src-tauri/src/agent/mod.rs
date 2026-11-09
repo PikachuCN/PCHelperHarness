@@ -2,7 +2,7 @@ pub mod approval;
 pub mod prompt;
 pub mod session;
 
-use crate::config::{ApiKey, ApprovalMode, Config};
+use crate::config::{ApiKey, ApprovalConfig, ApprovalMode, Config};
 use crate::llm::{Message, StreamEvent};
 use crate::risk::{self, RiskLevel};
 use crate::tools::{self, ToolOutput, ToolRequest};
@@ -80,6 +80,8 @@ pub async fn run_turn(
             ApprovalMode::Auto => "auto".to_string(),
         },
     };
+    let python_plugin_runtime =
+        tools::python_status().source == Some(tools::PythonRuntimeSource::Plugin);
     let max_steps = config.execution.max_steps.clamp(1, 100);
     let output_limit_kb = config.execution.output_limit_kb.clamp(2, 1024);
 
@@ -300,11 +302,14 @@ pub async fn run_turn(
                 &stored,
             );
 
-            let needs_approval = match assessment.level {
-                RiskLevel::L0 => mode == "manual" && config.approval.readonly_needs_approval,
-                RiskLevel::L1 => mode != "auto",
-                RiskLevel::L2 | RiskLevel::L3 => true,
-            };
+            let needs_approval = needs_approval(
+                &call.name,
+                &arguments,
+                &assessment,
+                &mode,
+                &config.approval,
+                python_plugin_runtime,
+            );
             if needs_approval {
                 let approval =
                     ApprovalRequest::from_tool(&session_id, &turn_id, &message_id, &request, &mode);
@@ -430,6 +435,37 @@ pub async fn run_turn(
     Ok(outcome)
 }
 
+fn needs_approval(
+    name: &str,
+    arguments: &Value,
+    assessment: &crate::risk::RiskAssessment,
+    mode: &str,
+    approval: &ApprovalConfig,
+    python_plugin_runtime: bool,
+) -> bool {
+    let shell = arguments.get("shell").and_then(Value::as_str).unwrap_or("");
+    let command = arguments
+        .get("command")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let pip_install_exception = python_plugin_runtime
+        && approval.auto_approve_python_pip_install
+        && name == "run_command"
+        && assessment.level == RiskLevel::L2
+        && !assessment.requires_typed_confirmation
+        && assessment.matched_rules == ["package.install"]
+        && risk::is_python_pip_install(shell, command);
+    if pip_install_exception {
+        return false;
+    }
+
+    match assessment.level {
+        RiskLevel::L0 => mode == "manual" && approval.readonly_needs_approval,
+        RiskLevel::L1 => mode != "auto",
+        RiskLevel::L2 | RiskLevel::L3 => true,
+    }
+}
+
 fn decrypt_key(key: &ApiKey) -> Result<String, String> {
     crate::config::decrypt_api_key(key).map_err(|error| error.to_string())
 }
@@ -496,4 +532,134 @@ fn emit_tool(
             "tool": tool,
         }),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pip_approval() -> ApprovalConfig {
+        ApprovalConfig {
+            auto_approve_python_pip_install: true,
+            ..ApprovalConfig::default()
+        }
+    }
+
+    fn command_arguments(shell: &str, command: &str) -> Value {
+        serde_json::json!({"shell": shell, "command": command})
+    }
+
+    #[test]
+    fn pip_install_auto_approval_is_opt_in_and_plugin_only() {
+        let command = "python -m pip install requests";
+        let arguments = command_arguments("python", command);
+        let assessment = risk::classify("python", command, None);
+        assert_eq!(assessment.level, RiskLevel::L2);
+        assert!(!needs_approval(
+            "run_command",
+            &arguments,
+            &assessment,
+            "manual",
+            &pip_approval(),
+            true,
+        ));
+        assert!(needs_approval(
+            "run_command",
+            &arguments,
+            &assessment,
+            "manual",
+            &ApprovalConfig::default(),
+            true,
+        ));
+        assert!(needs_approval(
+            "run_command",
+            &arguments,
+            &assessment,
+            "auto",
+            &pip_approval(),
+            false,
+        ));
+    }
+
+    #[test]
+    fn pip_exception_rejects_unrelated_or_compound_commands() {
+        let cases = [
+            "python -m pip uninstall requests",
+            "python -m pip install requests; python -c \"import os; os.remove('x')\"",
+            "python -m pip install requests > install.log",
+            "python -c \"import requests; requests.get('https://example.com')\"",
+        ];
+        for command in cases {
+            let arguments = command_arguments("python", command);
+            let assessment = risk::classify("python", command, None);
+            assert!(
+                needs_approval(
+                    "run_command",
+                    &arguments,
+                    &assessment,
+                    "auto",
+                    &pip_approval(),
+                    true,
+                ),
+                "command should still require approval: {command}",
+            );
+        }
+
+        let command = "python -m pip install requests";
+        let assessment = risk::classify("python", command, Some(RiskLevel::L3));
+        assert!(needs_approval(
+            "run_command",
+            &command_arguments("python", command),
+            &assessment,
+            "auto",
+            &pip_approval(),
+            true,
+        ));
+        let assessment = risk::classify("cmd", command, None);
+        assert!(needs_approval(
+            "run_command",
+            &command_arguments("cmd", command),
+            &assessment,
+            "auto",
+            &pip_approval(),
+            true,
+        ));
+    }
+
+    #[test]
+    fn existing_approval_matrix_is_unchanged_for_other_commands() {
+        let approval = pip_approval();
+        for (level, manual, auto) in [
+            (RiskLevel::L0, false, false),
+            (RiskLevel::L1, true, false),
+            (RiskLevel::L2, true, true),
+            (RiskLevel::L3, true, true),
+        ] {
+            let mut assessment = risk::classify("python", "python -m pip install requests", None);
+            assessment.level = level;
+            assessment.matched_rules = vec!["test.rule".to_owned()];
+            assert_eq!(
+                needs_approval(
+                    "run_command",
+                    &command_arguments("python", "print('ok')"),
+                    &assessment,
+                    "manual",
+                    &approval,
+                    true,
+                ),
+                manual,
+            );
+            assert_eq!(
+                needs_approval(
+                    "run_command",
+                    &command_arguments("python", "print('ok')"),
+                    &assessment,
+                    "auto",
+                    &approval,
+                    true,
+                ),
+                auto,
+            );
+        }
+    }
 }

@@ -47,6 +47,7 @@ where
 
     let request = api_request(
         client.post(endpoint(&provider.base_url, "responses")),
+        provider,
         api_key,
     )
     .json(&Value::Object(body));

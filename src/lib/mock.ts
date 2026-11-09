@@ -29,6 +29,7 @@ function summarizeMockTitle(content: string): string {
   return content.trim().split(/[。！？!?；;\n]/)[0].slice(0, 24) || "新对话";
 }
 const lowRisk: RiskAssessment = { level: "l0", summaryZh: "只读取本机状态，不修改配置或文件。", reasons: ["只读系统查询"], requiresTypedConfirmation: false, matchedRules: ["readonly"] };
+const kiloFreeModels = ["kilo-auto/free", "nvidia/nemotron-3.5-super-vl:free", "reflection/beam-free"];
 
 let config: AppConfig = {
   version: 1,
@@ -43,7 +44,7 @@ let config: AppConfig = {
     models: ["deepseek-chat", "deepseek-reasoner", "cn:auto", "cn:balanced-model", "cn:deepseek-v4-flash", "cn:deepseek-v4-pro", "cn:deepseek-v4.1-flash", "cn:fast-model", "cn:glm-5.1", "cn:glm-5.2", "cn:glm-5.3", "cn:glm-5.3-flash", "cn:glm-5v-turbo", "cn:hunyuan-image-alpha-edit", "cn:hy3", "cn:hy4-preview", "cn:hy4free"],
     temperature: null,
   }],
-  approval: { mode: "manual", readonlyNeedsApproval: false },
+  approval: { mode: "manual", readonlyNeedsApproval: false, autoApprovePythonPipInstall: false },
   execution: { defaultTimeoutSec: 120, maxTimeoutSec: 1800, outputLimitKb: 16, maxSteps: 25 },
   appearance: { theme: "system", fontSize: 14 },
   security: { encryptApiKey: true },
@@ -324,13 +325,14 @@ export async function mockInvoke<K extends IpcCommand>(command: K, rawArgs: IpcC
       const { provider } = rawArgs as IpcCommandMap["fetch_models"]["args"];
       await new Promise((resolve) => window.setTimeout(resolve, 500));
       if (!provider.baseUrl.trim()) throw new Error("请先填写接口地址");
+      if (provider.id === "kilo-free") return kiloFreeModels;
       return provider.apiMode === "responses" ? ["gpt-5.2", "gpt-5-mini"] : ["cn:auto", "cn:balanced-model", "cn:deep-model", "cn:deepseek-v4-flash", "cn:glm-5.3"];
     }
     case "test_provider": {
       const { provider } = rawArgs as IpcCommandMap["test_provider"]["args"];
       await new Promise((resolve) => window.setTimeout(resolve, 650));
       if (!provider.baseUrl.trim()) return { connected: false, latencyMs: 0, models: [], supportsTools: false };
-      const models = provider.apiMode === "responses" ? ["gpt-5.2", "gpt-5-mini"] : ["cn:auto", "cn:balanced-model", "cn:deep-model", "cn:deepseek-v4-flash", "cn:glm-5.3"];
+      const models = provider.id === "kilo-free" ? kiloFreeModels : provider.apiMode === "responses" ? ["gpt-5.2", "gpt-5-mini"] : ["cn:auto", "cn:balanced-model", "cn:deep-model", "cn:deepseek-v4-flash", "cn:glm-5.3"];
       return { connected: true, latencyMs: 328, models: models.map((id) => ({ id })), supportsTools: true };
     }
     case "list_skills": return structuredClone(skills);

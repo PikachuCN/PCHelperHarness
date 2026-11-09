@@ -9,6 +9,7 @@ Harness 是一款基于 **Rust + Tauri 2 + React + TypeScript** 的 Windows 中�
 ## 核心功能
 
 - **OpenAI 兼容接口**：支持 Chat Completions 与 Responses 协议，可获取模型列表、测试连接并使用自定义模型。
+- **Kilo 免费模型插件**：无需登录或 API Key，可从插件页一键添加；仅展示上游明确标记为免费的模型，并沿用现有流式对话与工具调用链。
 - **Agent 诊断循环**：支持流式正文与推理内容、工具结果回传、最多 25 步执行、主动停止及会话自动保存。
 - **本机维修工具**：覆盖 CMD、PowerShell、WSL、Python、系统信息、进程、服务、事件日志、文件和注册表等能力。
 - **风险分级审批**：区分只读、系统修改、下载安装和破坏性操作；高风险操作由后端强制审批，必要时要求二次确认。
@@ -60,7 +61,7 @@ Harness 是一款基于 **Rust + Tauri 2 + React + TypeScript** 的 Windows 中�
 
 - Windows 10/11
 - Microsoft Edge WebView2 Runtime
-- 一个可用的 OpenAI 兼容接口及其 API Key
+- 一个可用的 OpenAI 兼容接口及其 API Key，或启用内置 Kilo 免费模型插件
 
 ### 从源码开发
 
@@ -124,6 +125,14 @@ src-tauri/target/release/python.dll
 - 首次启动会生成 `config.json` 和 `skills/`，运行数据按需写入 `data/`。
 - `config.json`、运行数据、构建产物和依赖目录均已加入 `.gitignore`。
 
+### Kilo 免费模型插件
+
+在「设置 → 插件 → 模型插件」中点击「添加」，或在「设置 → 接口」的接口列表中点击免费模型图标。保存设置后，将「Kilo 免费模型」设为当前接口即可使用；点击「获取模型」会刷新上游免费模型目录。
+
+该插件使用 `https://ai-gateway.kilo.ai/api/v1` 的 OpenAI 兼容接口，默认模型为 `kilo-auto/free`，不会发送空的 `Authorization` 头。免费不代表不限流，模型可用性与地区限制由上游决定。上游可能记录提示词并用于改进服务，请勿发送密码、密钥、个人身份信息或商业机密。
+
+接入方式参考 [dsh-our-free-model](https://github.com/Ebony-Vinyl/dsh-our-free-model) 的 Kilo 渠道，并复用 Harness 现有的 Rust 流式协议、工具调用、取消和审批链，不引入额外本机 DLL 权限。
+
 ### Python 运行时插件
 
 `python.dll` 是可选的本机运行时插件。主程序只会向模型暴露实际可用的 shell；未检测到 Python 插件或运行时时，不会声明 Python 工具可用。
@@ -142,7 +151,9 @@ Windows 需要真实的 `python.exe` 和本地扩展文件路径，因此插件�
 - pip 安装的包、下载缓存和用户包目录均重定向到临时运行时，退出后不会保留；每次启动都是干净环境。
 - 首次使用新版插件时会清理旧版 `data/plugins/python/python-3.13.17-embed-amd64` 持久运行时。
 
-DLL 具有完整本机代码权限，只应使用来源可信的插件。pip 安装包仍按 L2 下载安装风险进行审批，第三方包及其安装脚本也只应从可信来源获取。
+DLL 具有完整本机代码权限，只应使用来源可信的插件。pip 安装包默认仍按 L2 下载安装风险进行审批，第三方包及其安装脚本也只应从可信来源获取。
+
+如需减少重复确认，可在「设置 → 插件 → Python 运行时插件」中开启「自动审批 Pip 安装命令」。该例外仅在内置 DLL 插件处于活动状态时，对单独的 `python -m pip install ...` 生效；便携或系统 Python、`pip uninstall`、复合命令、输出重定向、动态执行和其他风险操作不会被放行。安装脚本仍拥有当前用户权限，临时运行时不等于安全沙箱。
 
 ## 项目结构
 

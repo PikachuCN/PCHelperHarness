@@ -100,10 +100,22 @@ pub(crate) fn endpoint(base_url: &str, path: &str) -> String {
     format!("{}/{}", base_url.trim_end_matches('/'), path)
 }
 
-pub(crate) fn api_request(request: RequestBuilder, api_key: &str) -> RequestBuilder {
-    request
-        .bearer_auth(api_key)
-        .header(reqwest::header::USER_AGENT, USER_AGENT)
+pub(crate) fn api_request(
+    request: RequestBuilder,
+    provider: &ProviderConfig,
+    api_key: &str,
+) -> RequestBuilder {
+    let mut request = request.header(reqwest::header::USER_AGENT, USER_AGENT);
+    if provider.is_kilo_free() {
+        request = request
+            .header("http-referer", "https://kilo.ai/")
+            .header("x-title", "Harness");
+    }
+    if api_key.is_empty() {
+        request
+    } else {
+        request.bearer_auth(api_key)
+    }
 }
 
 pub(crate) async fn checked_response(
@@ -145,6 +157,40 @@ mod tests {
             endpoint("https://example.test/v1/", "models"),
             "https://example.test/v1/models"
         );
+    }
+
+    #[test]
+    fn anonymous_request_omits_authorization_header() {
+        let provider = ProviderConfig::kilo_free();
+        let request = api_request(
+            Client::new().get("https://example.test/models"),
+            &provider,
+            "",
+        )
+        .build()
+        .unwrap();
+        assert!(!request
+            .headers()
+            .contains_key(reqwest::header::AUTHORIZATION));
+        assert_eq!(request.headers()["http-referer"], "https://kilo.ai/");
+        assert_eq!(request.headers()["x-title"], "Harness");
+    }
+
+    #[test]
+    fn authenticated_request_keeps_bearer_header() {
+        let provider = ProviderConfig::default();
+        let request = api_request(
+            Client::new().get("https://example.test/models"),
+            &provider,
+            "secret",
+        )
+        .build()
+        .unwrap();
+        assert_eq!(
+            request.headers()[reqwest::header::AUTHORIZATION],
+            "Bearer secret"
+        );
+        assert!(!request.headers().contains_key("http-referer"));
     }
 
     #[test]

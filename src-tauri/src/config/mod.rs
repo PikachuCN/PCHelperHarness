@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use crate::platform::dpapi;
 
 pub const CONFIG_FILE_NAME: &str = "config.json";
+pub const KILO_FREE_PROVIDER_ID: &str = "kilo-free";
+pub const KILO_FREE_BASE_URL: &str = "https://ai-gateway.kilo.ai/api/v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
@@ -63,6 +65,7 @@ pub enum ApiMode {
 pub struct ApprovalConfig {
     pub mode: ApprovalMode,
     pub readonly_needs_approval: bool,
+    pub auto_approve_python_pip_install: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -165,11 +168,31 @@ impl Default for ProviderConfig {
     }
 }
 
+impl ProviderConfig {
+    pub fn kilo_free() -> Self {
+        Self {
+            id: KILO_FREE_PROVIDER_ID.to_owned(),
+            name: "Kilo 免费模型".to_owned(),
+            base_url: KILO_FREE_BASE_URL.to_owned(),
+            api_key: ApiKeyConfig::default(),
+            api_mode: ApiMode::ChatCompletions,
+            model: "kilo-auto/free".to_owned(),
+            models: vec!["kilo-auto/free".to_owned()],
+            temperature: None,
+        }
+    }
+
+    pub fn is_kilo_free(&self) -> bool {
+        self.id == KILO_FREE_PROVIDER_ID
+    }
+}
+
 impl Default for ApprovalConfig {
     fn default() -> Self {
         Self {
             mode: ApprovalMode::Manual,
             readonly_needs_approval: false,
+            auto_approve_python_pip_install: false,
         }
     }
 }
@@ -455,6 +478,7 @@ mod tests {
         assert!(provider.api_key.encrypted);
         assert_eq!(config.approval.mode, ApprovalMode::Manual);
         assert!(!config.approval.readonly_needs_approval);
+        assert!(!config.approval.auto_approve_python_pip_install);
         assert_eq!(config.execution.default_timeout_sec, 120);
         assert_eq!(config.execution.max_timeout_sec, 1800);
         assert_eq!(config.execution.output_limit_kb, 16);
@@ -477,6 +501,23 @@ mod tests {
         assert!(json.contains("\"temperature\":null"));
         assert!(!json.contains("active_provider_id"));
         assert_eq!(serde_json::from_str::<Config>(&json).unwrap(), config);
+    }
+
+    #[test]
+    fn kilo_free_provider_is_anonymous_and_openai_compatible() {
+        let provider = ProviderConfig::kilo_free();
+        assert!(provider.is_kilo_free());
+        assert_eq!(provider.base_url, KILO_FREE_BASE_URL);
+        assert_eq!(provider.api_mode, ApiMode::ChatCompletions);
+        assert_eq!(provider.model, "kilo-auto/free");
+        assert!(provider.api_key.value.is_empty());
+    }
+
+    #[test]
+    fn legacy_approval_config_disables_pip_auto_approval() {
+        let approval: ApprovalConfig =
+            serde_json::from_str(r#"{"mode":"manual","readonlyNeedsApproval":false}"#).unwrap();
+        assert!(!approval.auto_approve_python_pip_install);
     }
 
     #[test]

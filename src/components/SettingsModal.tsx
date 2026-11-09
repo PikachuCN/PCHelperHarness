@@ -22,6 +22,7 @@ import {
   Save,
   Server,
   Settings2,
+  Sparkles,
   ShieldCheck,
   SlidersHorizontal,
   Sun,
@@ -51,6 +52,18 @@ const pythonSourceLabels = {
   portable: "应用便携 Python",
   system: "系统 Python",
 } as const;
+
+const KILO_FREE_PROVIDER_ID = "kilo-free";
+const createKiloFreeProvider = (): ProviderConfig => ({
+  id: KILO_FREE_PROVIDER_ID,
+  name: "Kilo 免费模型",
+  baseUrl: "https://ai-gateway.kilo.ai/api/v1",
+  apiKey: { encrypted: false, value: "" },
+  apiMode: "chat_completions",
+  model: "kilo-auto/free",
+  models: ["kilo-auto/free"],
+  temperature: null,
+});
 
 function Toggle({ checked, onChange, label, description }: { checked: boolean; onChange: (checked: boolean) => void; label: string; description?: string }) {
   return (
@@ -108,6 +121,8 @@ export default function SettingsModal() {
   dirtyRef.current = dirty;
   closeConfirmRef.current = closeConfirm;
   const provider = draft?.providers.find((item) => item.id === selectedProviderId) ?? draft?.providers[0];
+  const isKiloFreeProvider = provider?.id === KILO_FREE_PROVIDER_ID;
+  const kiloFreeProviderAdded = draft?.providers.some((item) => item.id === KILO_FREE_PROVIDER_ID) ?? false;
 
   useEffect(() => {
     if (config && !draft) {
@@ -179,6 +194,26 @@ export default function SettingsModal() {
     setSelectedProviderId(id);
     setTestResult(null);
     setTestError(null);
+  };
+
+  const addKiloFreeProvider = () => {
+    const existing = draft?.providers.find((item) => item.id === KILO_FREE_PROVIDER_ID);
+    if (!existing) {
+      const newProvider = createKiloFreeProvider();
+      updateDraft((current) => ({
+        ...current,
+        providers: current.providers.some((item) => item.id === KILO_FREE_PROVIDER_ID)
+          ? current.providers
+          : [...current.providers, newProvider],
+        activeProviderId: current.activeProviderId || newProvider.id,
+      }));
+    }
+    setSelectedProviderId(KILO_FREE_PROVIDER_ID);
+    setSection("interface");
+    setShowKey(false);
+    setTestResult(null);
+    setTestError(null);
+    setCustomModelInput(false);
   };
 
   const removeProvider = () => {
@@ -276,7 +311,13 @@ export default function SettingsModal() {
                 <SettingSection title="模型接口" description="配置兼容的模型服务。密钥仅随本机配置保存。">
                   <div className="provider-workspace">
                     <div className="provider-list">
-                      <div className="provider-list-heading"><span>接口配置</span><IconButton label="添加接口配置" onClick={addProvider}><Plus size={16} /></IconButton></div>
+                      <div className="provider-list-heading">
+                        <span>接口配置</span>
+                        <div className="provider-list-actions">
+                          <IconButton label="添加 Kilo 免费模型插件" onClick={addKiloFreeProvider} disabled={kiloFreeProviderAdded}><Sparkles size={15} /></IconButton>
+                          <IconButton label="添加自定义接口配置" onClick={addProvider}><Plus size={16} /></IconButton>
+                        </div>
+                      </div>
                       {draft.providers.map((item) => (
                         <button
                           type="button"
@@ -299,13 +340,17 @@ export default function SettingsModal() {
                           <input type="radio" name="activeProvider" checked={draft.activeProviderId === provider.id} onChange={() => updateDraft((current) => ({ ...current, activeProviderId: provider.id }))} />
                           设为当前使用的接口
                         </label>
-                        <label className="field-label">接口地址<input value={provider.baseUrl} onChange={(event) => updateProvider({ baseUrl: event.target.value })} placeholder="https://api.example.com/v1" spellCheck={false} /></label>
-                        <label className="field-label">API Key
-                          <span className="input-with-action">
-                            <input type={showKey ? "text" : "password"} value={provider.apiKey.value} onChange={(event) => updateProvider({ apiKey: { encrypted: false, value: event.target.value } })} placeholder="留空保留已保存 Key，或输入新 Key" autoComplete="off" spellCheck={false} />
-                            <IconButton label={showKey ? "隐藏 API Key" : "显示 API Key"} onClick={() => setShowKey((value) => !value)}>{showKey ? <EyeOff size={16} /> : <Eye size={16} />}</IconButton>
-                          </span>
-                        </label>
+                        <label className="field-label">接口地址<input value={provider.baseUrl} onChange={(event) => updateProvider({ baseUrl: event.target.value })} placeholder="https://api.example.com/v1" spellCheck={false} readOnly={isKiloFreeProvider} /></label>
+                        {isKiloFreeProvider ? (
+                          <div className="anonymous-provider-note"><CircleCheck size={16} /><span>内置免费模型插件，无需 API Key。模型目录仅显示上游标记为免费的模型。</span></div>
+                        ) : (
+                          <label className="field-label">API Key
+                            <span className="input-with-action">
+                              <input type={showKey ? "text" : "password"} value={provider.apiKey.value} onChange={(event) => updateProvider({ apiKey: { encrypted: false, value: event.target.value } })} placeholder="留空保留已保存 Key，或输入新 Key" autoComplete="off" spellCheck={false} />
+                              <IconButton label={showKey ? "隐藏 API Key" : "显示 API Key"} onClick={() => setShowKey((value) => !value)}>{showKey ? <EyeOff size={16} /> : <Eye size={16} />}</IconButton>
+                            </span>
+                          </label>
+                        )}
                         <div className="field-label"><span>接口协议</span>
                           <SelectControl
                             label="接口协议"
@@ -313,10 +358,11 @@ export default function SettingsModal() {
                             options={[{ value: "chat_completions", label: "Chat Completions" }, { value: "responses", label: "Responses" }]}
                             onChange={(apiMode) => updateProvider({ apiMode: apiMode as ProviderConfig["apiMode"] })}
                             className="settings-select"
+                            disabled={isKiloFreeProvider}
                           />
                         </div>
                         <div className="field-label">
-                          <div className="field-label-heading"><span>模型</span><button type="button" className="text-button" onClick={() => setCustomModelInput((value) => !value)} disabled={provider.models.length === 0}>{customModelInput ? "从列表选择" : "手动输入"}</button></div>
+                          <div className="field-label-heading"><span>模型</span><button type="button" className="text-button" onClick={() => setCustomModelInput((value) => !value)} disabled={provider.models.length === 0 || isKiloFreeProvider}>{customModelInput ? "从列表选择" : "手动输入"}</button></div>
                           <div className="model-input-row">
                             {customModelInput || provider.models.length === 0 ? (
                               <input aria-label="模型名称" value={provider.model} onChange={(event) => updateProvider({ model: event.target.value })} placeholder="输入自定义模型名称" spellCheck={false} />
@@ -334,11 +380,12 @@ export default function SettingsModal() {
                           </div>
                         </div>
                         <label className="field-label">可用模型（使用逗号分隔）
-                          <input value={provider.models.join(", ")} onChange={(event) => updateProvider({ models: event.target.value.split(",").map((model) => model.trim()).filter(Boolean) })} placeholder="deepseek-chat, deepseek-reasoner" spellCheck={false} />
+                          <input value={provider.models.join(", ")} onChange={(event) => updateProvider({ models: event.target.value.split(",").map((model) => model.trim()).filter(Boolean) })} placeholder="deepseek-chat, deepseek-reasoner" spellCheck={false} readOnly={isKiloFreeProvider} />
                         </label>
                         <label className="field-label">Temperature（留空使用服务默认值）
                           <input type="number" min="0" max="2" step="0.1" value={provider.temperature ?? ""} onChange={(event) => updateProvider({ temperature: event.target.value === "" ? null : Number(event.target.value) })} placeholder="0.7" />
                         </label>
+                        {isKiloFreeProvider && <p className="provider-plugin-note"><Info size={15} />免费池可能记录提示词并用于改进服务，请勿发送密码、密钥、个人信息或商业机密。可用性与限流策略由上游决定。</p>}
                         <div className="provider-test-row">
                           <button type="button" className="button secondary" onClick={() => void testProvider()} disabled={testing}><KeyRound size={16} />{testing ? "正在测试…" : "测试连接"}</button>
                           {testResult && <div className={`test-result ${testResult.connected ? "is-success" : "is-error"}`} role="status">{testResult.connected ? <CircleCheck size={16} /> : <CircleX size={16} />}<span>{testResult.connected ? `连接成功，发现 ${testResult.models.length} 个模型，${testResult.supportsTools ? "支持工具调用" : "未通过工具调用验证"}` : "连接失败"} · {testResult.latencyMs} ms</span></div>}
@@ -359,13 +406,13 @@ export default function SettingsModal() {
                     </button>
                   </div>
                   <div className="settings-group">
-                    <Toggle checked={draft.approval.readonlyNeedsApproval} onChange={(checked) => updateDraft((current) => ({ ...current, approval: { ...current.approval, readonlyNeedsApproval: checked } }))} label="手动模式下审批只读命令" description="开启后，L0 状态查询也会先展示命令并等待确认。L2 与 L3 始终需要审批。" />
+                    <Toggle checked={draft.approval.readonlyNeedsApproval} onChange={(checked) => updateDraft((current) => ({ ...current, approval: { ...current.approval, readonlyNeedsApproval: checked } }))} label="手动模式下审批只读命令" description="开启后，L0 状态查询也会先展示命令并等待确认。L2 与 L3 默认需要审批；Python 插件的 Pip 安装可在插件设置中单独授权。" />
                   </div>
                   <div className="risk-guide">
                     <h3>风险等级</h3>
                     <div><span className="risk-badge">L0</span><p><strong>只读</strong><small>查询系统信息，不主动修改配置或文件。</small></p></div>
                     <div><span className="risk-badge">L1</span><p><strong>修改</strong><small>修改配置、写文件或结束进程；自动模式下可直接执行。</small></p></div>
-                    <div><span className="risk-badge risk-badge-l2">L2</span><p><strong>下载安装</strong><small>下载文件、安装软件或包；自动模式下仍需确认一次。</small></p></div>
+                    <div><span className="risk-badge risk-badge-l2">L2</span><p><strong>下载安装</strong><small>下载文件、安装软件或包；默认仍需确认，Pip 安装可在插件设置中单独授权。</small></p></div>
                     <div><span className="risk-badge risk-badge-l3">L3</span><p><strong>破坏性</strong><small>删除数据、修改磁盘或启动配置，始终需要二次确认。</small></p></div>
                   </div>
                   <div className="execution-settings">
@@ -395,7 +442,19 @@ export default function SettingsModal() {
                   </div>
                 </SettingSection>
               ) : section === "plugins" ? (
-                <SettingSection title="运行时插件" description="检查插件加载状态和 Python 执行来源。插件在启动时加载，更换 DLL 后需重启应用。">
+                <SettingSection title="插件" description="添加内置模型插件，并检查本机运行时插件和 Python 执行来源。">
+                  <h3 className="field-group-title">模型插件</h3>
+                  <div className="python-runtime model-plugin-card">
+                    <Sparkles size={20} />
+                    <div>
+                      <strong>Kilo 免费模型</strong>
+                      <p>无需登录或 API Key，动态获取 Kilo 免费池中的模型。</p>
+                      <code>https://ai-gateway.kilo.ai/api/v1</code>
+                    </div>
+                    <button type="button" className="button secondary compact" onClick={addKiloFreeProvider}>{kiloFreeProviderAdded ? "配置" : "添加"}</button>
+                  </div>
+                  <p className="security-note"><Info size={16} />免费服务可能限流或调整模型；提示词可能被上游记录，请勿用于敏感信息。</p>
+                  <h3 className="field-group-title plugin-runtime-heading">Python 运行时插件</h3>
                   <div className="section-toolbar">
                     <button type="button" className="button secondary compact" onClick={() => void refreshPlugins()} disabled={refreshingPlugins}><RefreshCw size={15} className={refreshingPlugins ? "spinning" : ""} />刷新状态</button>
                     <button type="button" className="button secondary compact" onClick={() => { void ipcInvoke("open_plugin_dir", {}).catch((error) => notify(`打开插件目录失败：${String(error)}`, "error")); }}><FolderOpen size={15} />打开插件目录</button>
@@ -411,6 +470,14 @@ export default function SettingsModal() {
                     <span className="runtime-status">{pluginCatalog?.python.available ? "可用" : "不可用"}</span>
                   </div>
                   <p className="runtime-priority"><Blocks size={16} />内置插件优先执行；其临时运行时、pip 包与缓存仅保留在本次会话，退出时清理。</p>
+                  <div className="settings-group plugin-approval-setting">
+                    <Toggle
+                      checked={draft.approval.autoApprovePythonPipInstall}
+                      onChange={(checked) => updateDraft((current) => ({ ...current, approval: { ...current.approval, autoApprovePythonPipInstall: checked } }))}
+                      label="自动审批 Pip 安装命令"
+                      description="仅对内置 Python 插件临时环境中单独的 python -m pip install 命令生效；卸载、复合命令、重定向和其他风险操作仍需审批。"
+                    />
+                  </div>
                   <div className="skills-list plugin-list">
                     {!pluginCatalog && <p className="muted-empty">正在读取插件清单…</p>}
                     {pluginCatalog?.plugins.length === 0 && <p className="muted-empty">未检测到运行时插件。可将受信任的 python.dll 放入应用目录并重启。</p>}
@@ -426,7 +493,7 @@ export default function SettingsModal() {
                     ))}
                   </div>
                   {pluginCatalog && <p className="plugin-directory">插件目录：<code>{pluginCatalog.directory}</code></p>}
-                  <p className="security-note"><ShieldCheck size={16} />DLL 插件拥有本机代码权限，只应使用来源可信的插件。</p>
+                  <p className="security-note"><ShieldCheck size={16} />DLL 插件和 Pip 包安装脚本拥有当前用户权限，只应使用可信来源；临时环境不等于安全沙箱。</p>
                 </SettingSection>
               ) : section === "appearance" ? (
                 <SettingSection title="外观" description="选择适合当前工作环境的显示方式。">

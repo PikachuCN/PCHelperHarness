@@ -92,6 +92,10 @@ pub fn classify(shell: &str, command: &str, self_report: Option<RiskLevel>) -> R
     }
 }
 
+pub(crate) fn is_python_pip_install(shell: &str, command: &str) -> bool {
+    rules::is_python_pip_install(shell, command)
+}
+
 pub fn classify_write_file(path: &str) -> RiskAssessment {
     let normalized = path
         .trim()

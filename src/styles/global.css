@@ -1863,6 +1863,17 @@ svg {
   font-size: 12px;
 }
 
+.provider-list-actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.provider-list-actions .icon-button {
+  width: 26px;
+  height: 26px;
+}
+
 .provider-item {
   display: flex;
   gap: 8px;
@@ -2002,6 +2013,30 @@ svg {
 .model-input-row > input { flex: 1; min-width: 0; }
 .model-input-row > .model-select-settings { flex: 1; min-width: 0; }
 .model-input-row .button { flex: 0 0 auto; }
+
+.anonymous-provider-note,
+.provider-plugin-note {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.anonymous-provider-note {
+  padding: 9px 10px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.anonymous-provider-note svg,
+.provider-plugin-note svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--accent);
+}
 
 .provider-test-row {
   display: flex;
@@ -2190,6 +2225,10 @@ svg {
 }
 .python-runtime > svg { flex: 0 0 auto; margin-top: 1px; color: var(--success); }
 .python-runtime.is-unavailable > svg { color: var(--red); }
+.model-plugin-card > svg { color: var(--accent); }
+.model-plugin-card > .button { flex: 0 0 auto; align-self: center; }
+.plugin-runtime-heading { margin-top: 24px; }
+.plugin-approval-setting { margin: 0 0 20px; border-top: 0; }
 .python-runtime > div { flex: 1; min-width: 0; }
 .python-runtime strong { font-size: 13px; font-weight: 600; }
 .python-runtime p { margin: 3px 0 0; color: var(--text-secondary); font-size: 12px; }

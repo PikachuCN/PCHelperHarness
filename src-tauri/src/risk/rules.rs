@@ -106,6 +106,29 @@ pub(crate) fn classify_command(shell: &str, command: &str) -> Vec<RuleMatch> {
         .collect()
 }
 
+pub(crate) fn is_python_pip_install(shell: &str, command: &str) -> bool {
+    let kind = ShellKind::parse(shell);
+    if kind != ShellKind::Python || detect_obfuscation(kind, command).is_some() {
+        return false;
+    }
+    let segments = split_compound(command);
+    if segments.len() != 1 || has_output_redirection(&segments[0]) {
+        return false;
+    }
+    let tokens = tokenize(&segments[0]);
+    if tokens.len() < 5
+        || !matches!(
+            command_name(&tokens[0]).as_str(),
+            "python" | "python3" | "py"
+        )
+    {
+        return false;
+    }
+    tokens[1] == "-m"
+        && tokens[2].eq_ignore_ascii_case("pip")
+        && tokens[3].eq_ignore_ascii_case("install")
+}
+
 fn detect_obfuscation(kind: ShellKind, command: &str) -> Option<RuleMatch> {
     let lower = command.to_ascii_lowercase();
     let powershell_context =

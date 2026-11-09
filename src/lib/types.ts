@@ -86,6 +86,7 @@ export interface ProviderConfig {
 export interface ApprovalConfig {
   mode: ApprovalMode;
   readonlyNeedsApproval: boolean;
+  autoApprovePythonPipInstall: boolean;
 }
 
 export interface ExecutionConfig {
