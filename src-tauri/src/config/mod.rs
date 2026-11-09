@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::platform::dpapi;
 
 pub const CONFIG_FILE_NAME: &str = "config.json";
+pub const CONFIG_VERSION: u32 = 2;
 pub const KILO_FREE_PROVIDER_ID: &str = "kilo-free";
 pub const KILO_FREE_BASE_URL: &str = "https://ai-gateway.kilo.ai/api/v1";
 
@@ -139,9 +140,9 @@ pub enum ConfigError {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            version: 1,
-            active_provider_id: "deepseek".to_owned(),
-            providers: vec![ProviderConfig::default()],
+            version: CONFIG_VERSION,
+            active_provider_id: KILO_FREE_PROVIDER_ID.to_owned(),
+            providers: vec![ProviderConfig::default(), ProviderConfig::kilo_free()],
             approval: ApprovalConfig::default(),
             execution: ExecutionConfig::default(),
             appearance: AppearanceConfig::default(),
@@ -365,6 +366,12 @@ pub fn load_from_with_status(path: impl AsRef<Path>) -> Result<LoadedConfig, Con
     }
     let bytes = fs::read(path)?;
     let mut config: Config = serde_json::from_slice(&bytes)?;
+    if config.version < 2 {
+        if !config.providers.iter().any(ProviderConfig::is_kilo_free) {
+            config.providers.push(ProviderConfig::kilo_free());
+        }
+        config.version = CONFIG_VERSION;
+    }
     let mut api_keys_requiring_reset = Vec::new();
 
     for provider in &mut config.providers {
@@ -467,15 +474,19 @@ mod tests {
     #[test]
     fn defaults_match_the_application_contract() {
         let config = Config::default();
-        assert_eq!(config.version, 1);
-        assert_eq!(config.active_provider_id, "deepseek");
+        assert_eq!(config.version, CONFIG_VERSION);
+        assert_eq!(config.active_provider_id, KILO_FREE_PROVIDER_ID);
         let provider = config.active_provider().unwrap();
-        assert_eq!(provider.base_url, "https://api.deepseek.com/v1");
-        assert_eq!(provider.model, "deepseek-chat");
-        assert_eq!(provider.models, ["deepseek-chat", "deepseek-reasoner"]);
+        assert_eq!(provider.base_url, KILO_FREE_BASE_URL);
+        assert_eq!(provider.model, "kilo-auto/free");
+        assert_eq!(provider.models, ["kilo-auto/free"]);
         assert_eq!(provider.api_mode, ApiMode::ChatCompletions);
         assert_eq!(provider.temperature, None);
-        assert!(provider.api_key.encrypted);
+        assert!(provider.api_key.value.is_empty());
+        assert!(config
+            .providers
+            .iter()
+            .any(|provider| { provider.id == "deepseek" && provider.model == "deepseek-chat" }));
         assert_eq!(config.approval.mode, ApprovalMode::Manual);
         assert!(!config.approval.readonly_needs_approval);
         assert!(!config.approval.auto_approve_python_pip_install);
@@ -521,12 +532,46 @@ mod tests {
     }
 
     #[test]
+    fn legacy_config_adds_kilo_without_changing_active_provider() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(CONFIG_FILE_NAME);
+        let legacy = Config {
+            version: 1,
+            active_provider_id: "deepseek".to_owned(),
+            providers: vec![ProviderConfig::default()],
+            ..Config::default()
+        };
+        fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+
+        let loaded = load_from_with_status(&path).unwrap().config;
+        assert_eq!(loaded.version, CONFIG_VERSION);
+        assert_eq!(loaded.active_provider_id, "deepseek");
+        assert!(loaded.providers.iter().any(ProviderConfig::is_kilo_free));
+    }
+
+    #[test]
+    fn current_config_respects_removed_kilo_provider() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(CONFIG_FILE_NAME);
+        let mut config = Config::default();
+        config.active_provider_id = "deepseek".to_owned();
+        config.providers.retain(|provider| !provider.is_kilo_free());
+        save_to(&path, &config).unwrap();
+
+        let loaded = load_from_with_status(&path).unwrap().config;
+        assert!(!loaded.providers.iter().any(ProviderConfig::is_kilo_free));
+        assert_eq!(loaded.active_provider_id, "deepseek");
+    }
+
+    #[test]
     fn save_and_load_round_trip_with_atomic_replacement() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("nested").join(CONFIG_FILE_NAME);
         let mut config = Config::default();
         config.security.encrypt_api_key = false;
-        config.providers[0].api_key.encrypted = false;
+        for provider in &mut config.providers {
+            provider.api_key.encrypted = false;
+        }
         config.providers[0].api_key.value = "plaintext-test-key".to_owned();
 
         save_to(&path, &config).unwrap();

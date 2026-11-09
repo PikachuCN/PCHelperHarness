@@ -32,9 +32,18 @@ const lowRisk: RiskAssessment = { level: "l0", summaryZh: "只读取本机状态
 const kiloFreeModels = ["kilo-auto/free", "nvidia/nemotron-3.5-super-vl:free", "reflection/beam-free"];
 
 let config: AppConfig = {
-  version: 1,
-  activeProviderId: "provider-main",
+  version: 2,
+  activeProviderId: "kilo-free",
   providers: [{
+    id: "kilo-free",
+    name: "Kilo 免费模型",
+    baseUrl: "https://ai-gateway.kilo.ai/api/v1",
+    apiKey: { encrypted: false, value: "" },
+    apiMode: "chat_completions",
+    model: "kilo-auto/free",
+    models: kiloFreeModels,
+    temperature: null,
+  }, {
     id: "provider-main",
     name: "默认接口",
     baseUrl: "https://api.deepseek.com/v1",
