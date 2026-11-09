@@ -117,7 +117,7 @@ export function StorageSection() {
 export function NetworkSection() {
   const data = useHarnessStore((state) => state.systemOverview.network?.data) as NetworkInfo | undefined;
   return (
-    <SectionCard section="network" title="网络与连接" description="网卡、IP、网关、DNS 与连接状态" icon={Wifi} hasData={Boolean(data)} action={<SettingsLink target="network">网络设置</SettingsLink>}>
+    <SectionCard section="network" title="网络与连接" description="网卡、IP、网关、DNS 与连接状态" icon={Wifi} hasData={Boolean(data)} className="span-2 network-section" action={<SettingsLink target="network">网络设置</SettingsLink>}>
       {data && <>
         <div className="network-summary"><StatusBadge tone={data.isConnected ? "success" : "warning"}>{data.isConnected ? "互联网已连接" : "未检测到互联网连接"}</StatusBadge>{data.profiles.map((profile, index) => <span key={`${profile.name}-${index}`}>{displayText(profile.name)} · {displayText(profile.networkCategory)} · {displayText(profile.ipv4Connectivity)}</span>)}</div>
         <div className="network-list">
@@ -141,7 +141,7 @@ export function NetworkSection() {
 export function SecuritySection() {
   const data = useHarnessStore((state) => state.systemOverview.security?.data) as SecurityInfo | undefined;
   return (
-    <SectionCard section="security" title="安全与更新" description="Defender、防火墙、系统安全状态与更新" icon={ShieldCheck} hasData={Boolean(data)} className="span-2" action={<SettingsLink target="security">安全设置</SettingsLink>}>
+    <SectionCard section="security" title="安全与更新" description="Defender、防火墙、系统安全状态与更新" icon={ShieldCheck} hasData={Boolean(data)} className="span-2 security-section" action={<SettingsLink target="security">安全设置</SettingsLink>}>
       {data && <>
         <div className="security-status-grid">
           <div><span>Defender 实时防护</span><StatusBadge tone={data.defender?.realTimeProtectionEnabled ? "success" : "warning"}>{data.defender ? boolLabel(data.defender.realTimeProtectionEnabled) : "未读取"}</StatusBadge></div>

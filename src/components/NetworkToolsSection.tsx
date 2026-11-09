@@ -136,6 +136,7 @@ export default function NetworkToolsSection() {
   const exportReport = useHarnessStore((state) => state.exportNetworkReport);
   const notify = useHarnessStore((state) => state.notify);
   const [selectedTool, setSelectedTool] = useState<NetworkToolId>("website");
+  const [workspaceView, setWorkspaceView] = useState<"test" | "history">("test");
   const [forms, setForms] = useState<ToolForms>(initialForms);
   const [professionalMode, setProfessionalMode] = useState(false);
   const [startingTool, setStartingTool] = useState<NetworkToolId | null>(null);
@@ -257,6 +258,11 @@ export default function NetworkToolsSection() {
   return <section className="overview-card network-section" aria-labelledby="network-tools-title">
     <header className="overview-card-header network-section-header"><span className="overview-card-icon" aria-hidden="true"><Settings2 size={19} /></span><div className="overview-card-heading"><h2 id="network-tools-title">专业网络工具</h2><p>七种独立主动测试；每次只提交一个明确目标</p></div><div className="overview-card-actions network-header-actions"><button type="button" className="button secondary compact" onClick={() => setExportConfirm(true)} disabled={!hasRawData || exporting}><Download size={14} />{exporting ? "导出中…" : "导出完整 JSON"}</button></div></header>
     <div className="overview-card-body network-section-body">
+      <div className="network-view-switch" aria-label="网络工具视图">
+        <button type="button" className={workspaceView === "test" ? "is-active" : ""} aria-pressed={workspaceView === "test"} onClick={() => setWorkspaceView("test")}>单次测试</button>
+        <button type="button" className={workspaceView === "history" ? "is-active" : ""} aria-pressed={workspaceView === "history"} onClick={() => setWorkspaceView("history")}>历史趋势 <span>{history.length}</span></button>
+      </div>
+      {workspaceView === "test" ? <>
       <div className="network-professional-row"><div><strong>{professionalMode ? "专业模式" : "引导模式"}</strong><p>{professionalMode ? "单目标、完整参数与原始结果；所有请求仍由你手动启动。" : "提供国内默认与国际对照预设；选择预设只填入参数，不会自动测试。"}</p></div><label className="network-check"><input type="checkbox" checked={professionalMode} onChange={(event) => setProfessionalMode(event.target.checked)} />专业模式（单目标）</label></div>
       <div className="network-tools-layout">
         <nav className="network-tool-nav" aria-label="选择网络工具">{tools.map(({ id, icon: Icon, description }) => {
@@ -285,7 +291,7 @@ export default function NetworkToolsSection() {
           </article> : !running && !selectedState?.error && <div className="network-empty compact"><SelectedIcon size={24} /><strong>此工具尚未产生结果</strong><p>核对参数后点击“运行测试”。失败和取消都会如实显示。</p></div>}
         </div>
       </div>
-      <NetworkHistoryPanel history={history} enabled={historyEnabled} onEnabledChange={setHistoryEnabled} onClear={clearHistory} onDelete={deleteHistory} />
+      </> : <NetworkHistoryPanel history={history} enabled={historyEnabled} onEnabledChange={setHistoryEnabled} onClear={clearHistory} onDelete={deleteHistory} />}
     </div>
     {pendingRequest && <ConfirmDialog title="允许发起外部网络测试？" description={`即将运行“${networkToolLabels[pendingRequest.tool]}”。目标服务器、公共 DNS 或测速节点会看到你的出口 IP，并可能记录请求时间、目标和流量。仅本次明确提交的参数会被执行；取消后不会发起测试。`} confirmLabel="了解并运行" onCancel={() => setPendingRequest(null)} onConfirm={() => { const request = pendingRequest; setPendingRequest(null); acknowledgePrivacy(); void execute(request); }} />}
     {exportConfirm && <ConfirmDialog title="导出包含敏感信息的完整 JSON？" description="完整 JSON 不脱敏，可能包含完整公网/本地 IPv4、IPv6、路由跳点、DNS 答案、目标 URL、错误详情及历史记录。请仅保存到可信位置，分享前自行审查。脱敏 Markdown 请使用一键诊断区的导出按钮。" confirmLabel="导出敏感 JSON" onCancel={() => setExportConfirm(false)} onConfirm={() => { setExportConfirm(false); void exportRaw(); }} />}

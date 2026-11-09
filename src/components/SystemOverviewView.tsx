@@ -12,7 +12,7 @@ import NetworkToolsSection from "./NetworkToolsSection";
 import { ActivationSection, BasicSection, HardwareSection, NetworkSection, SecuritySection, SoftwareSection, StorageSection } from "./SystemOverviewSections";
 import { StatusBadge } from "./SystemOverviewCard";
 
-type OverviewGroupId = "system" | "hardware" | "connectivity" | "software";
+type OverviewGroupId = "system" | "hardware" | "network" | "security" | "software";
 type OverviewPanelId = SystemOverviewSection | "networkDiagnostics" | "networkTools";
 
 interface OverviewGroup {
@@ -25,7 +25,8 @@ interface OverviewGroup {
 const overviewGroups: readonly OverviewGroup[] = [
   { id: "system", label: "系统", icon: Monitor, sections: [{ id: "basic", label: "基础信息" }, { id: "activation", label: "激活情况" }] },
   { id: "hardware", label: "硬件与存储", icon: Cpu, sections: [{ id: "hardware", label: "硬件信息" }, { id: "storage", label: "存储与磁盘" }, { id: "drivers", label: "驱动管理" }] },
-  { id: "connectivity", label: "网络与安全", icon: Wifi, sections: [{ id: "network", label: "网络连接" }, { id: "networkDiagnostics", label: "网络诊断" }, { id: "networkTools", label: "网络工具" }, { id: "security", label: "安全与更新" }] },
+  { id: "network", label: "网络", icon: Wifi, sections: [{ id: "network", label: "网络连接" }, { id: "networkDiagnostics", label: "网络诊断" }, { id: "networkTools", label: "网络工具" }] },
+  { id: "security", label: "安全", icon: ShieldCheck, sections: [{ id: "security", label: "安全与更新" }] },
   { id: "software", label: "软件", icon: AppWindow, sections: [{ id: "software", label: "软件安装情况" }] },
 ];
 
@@ -90,7 +91,7 @@ export default function SystemOverviewView() {
   const [copying, setCopying] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [activeGroupId, setActiveGroupId] = useState<OverviewGroupId>("system");
-  const [activeSections, setActiveSections] = useState<Record<OverviewGroupId, OverviewPanelId>>({ system: "basic", hardware: "hardware", connectivity: "network", software: "software" });
+  const [activeSections, setActiveSections] = useState<Record<OverviewGroupId, OverviewPanelId>>({ system: "basic", hardware: "hardware", network: "network", security: "security", software: "software" });
   const activeGroup = overviewGroups.find((group) => group.id === activeGroupId) ?? overviewGroups[0];
   const activeSection = activeSections[activeGroup.id];
   const basic = snapshot.basic?.data as SystemBasicInfo | undefined;
@@ -142,7 +143,7 @@ export default function SystemOverviewView() {
           <div className="system-overview-title"><h1>系统概况</h1><span>本机状态与按需网络诊断</span></div>
         </div>
         <div className="system-overview-header-actions">
-          {runningNetworkTasks > 0 && <button type="button" className="button quiet compact network-running-entry" onClick={() => { setActiveGroupId("connectivity"); setActiveSections((current) => ({ ...current, connectivity: networkDiagnostic.status === "running" ? "networkDiagnostics" : "networkTools" })); }}><Activity size={15} className="spinning" />{runningNetworkTasks} 项测试运行中</button>}
+          {runningNetworkTasks > 0 && <button type="button" className="button quiet compact network-running-entry" onClick={() => { setActiveGroupId("network"); setActiveSections((current) => ({ ...current, network: networkDiagnostic.status === "running" ? "networkDiagnostics" : "networkTools" })); }}><Activity size={15} className="spinning" />{runningNetworkTasks} 项测试运行中</button>}
           <button type="button" className="button quiet compact" onClick={() => void copySummary()} disabled={!hasData || copying}><Copy size={15} />{copying ? "正在复制…" : "复制摘要"}</button>
           <button type="button" className="button secondary compact" onClick={() => void saveReport()} disabled={!hasData || exporting}><Download size={15} />{exporting ? "正在导出…" : "导出报告"}</button>
           <button type="button" className="button secondary compact" onClick={refresh} disabled={refreshing}><RefreshCw size={15} className={refreshing ? "spinning" : ""} />{refreshing ? "正在刷新" : "全部刷新"}</button>
