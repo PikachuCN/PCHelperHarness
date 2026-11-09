@@ -78,6 +78,30 @@ export function boolLabel(value: boolean | null | undefined, yes = "已启用", 
   return value ? yes : no;
 }
 
+export function driverProblemLabel(code: unknown): string {
+  const labels: Record<number, string> = {
+    1: "设备配置不正确",
+    3: "驱动可能已损坏",
+    10: "设备无法启动",
+    14: "需要重启后生效",
+    18: "需要重新安装驱动",
+    19: "驱动注册信息损坏",
+    22: "设备已被禁用",
+    24: "设备当前不存在",
+    28: "未安装驱动程序",
+    31: "Windows 无法加载驱动",
+    37: "驱动服务初始化失败",
+    39: "驱动已损坏或丢失",
+    43: "设备报告硬件故障",
+    45: "设备当前未连接",
+    47: "设备准备安全移除",
+    48: "驱动被阻止启动",
+    52: "驱动签名验证失败",
+  };
+  const value = Number(code);
+  return labels[value] ?? (value ? `设备异常（代码 ${value}）` : "设备状态正常");
+}
+
 export function softwareCategoryLabel(category: unknown): string {
   const labels: Record<string, string> = {
     Browser: "浏览器",

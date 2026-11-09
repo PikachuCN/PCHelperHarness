@@ -157,7 +157,7 @@ export interface EnvInfo {
   availableShells: string[];
 }
 
-export type SystemOverviewSection = "basic" | "activation" | "hardware" | "software" | "storage" | "network" | "security";
+export type SystemOverviewSection = "basic" | "activation" | "hardware" | "drivers" | "software" | "storage" | "network" | "security";
 export type SystemSettingsTarget = "activation" | "windowsUpdate" | "deviceManager" | "installedApps" | "network" | "security";
 
 export interface SystemBasicInfo {
@@ -220,6 +220,56 @@ export interface HardwareInfo {
   warnings: string[];
 }
 
+export interface DriverDeviceInfo {
+  deviceId: string | null;
+  deviceName: string | null;
+  className: string | null;
+  manufacturer: string | null;
+  provider: string | null;
+  version: string | null;
+  driverDate: string | null;
+  infName?: string | null;
+  isSigned?: boolean | null;
+  status: string | null;
+  problemCode: number;
+}
+
+export interface DriverUpdateInfo {
+  id: string | null;
+  title: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  className: string | null;
+  driverDate: string | null;
+  deviceId: string | null;
+  hardwareId: string | null;
+  isDownloaded: boolean | null;
+  isMandatory: boolean | null;
+  isOptional: boolean | null;
+  rebootRequired: boolean | null;
+  kbArticles: string[];
+}
+
+export interface DriverUpdateScanResult {
+  scannedAt: string;
+  updates: DriverUpdateInfo[];
+  warnings: string[];
+}
+
+export interface DriverInfo {
+  summary: {
+    totalDevices: number;
+    driverCount: number;
+    problemCount: number;
+    missingDriverCount: number;
+    unsignedDriverCount: number;
+  };
+  problems: DriverDeviceInfo[];
+  drivers: DriverDeviceInfo[];
+  updateScan: DriverUpdateScanResult | null;
+  warnings: string[];
+}
+
 export interface CommonSoftwareInfo {
   id: string;
   name: string;
@@ -267,12 +317,13 @@ export interface SecurityInfo {
   warnings: string[];
 }
 
-export type SystemOverviewData = SystemBasicInfo | ActivationInfo | HardwareInfo | SoftwareInfo | StorageInfo | NetworkInfo | SecurityInfo;
+export type SystemOverviewData = SystemBasicInfo | ActivationInfo | HardwareInfo | DriverInfo | SoftwareInfo | StorageInfo | NetworkInfo | SecurityInfo;
 
 export type SystemOverviewSectionResponse =
   | { section: "basic"; data: SystemBasicInfo }
   | { section: "activation"; data: ActivationInfo }
   | { section: "hardware"; data: HardwareInfo }
+  | { section: "drivers"; data: DriverInfo }
   | { section: "software"; data: SoftwareInfo }
   | { section: "storage"; data: StorageInfo }
   | { section: "network"; data: NetworkInfo }
@@ -438,6 +489,7 @@ export interface IpcCommandMap {
   open_config_dir: { args: Record<string, never>; result: void };
   get_env_info: { args: Record<string, never>; result: EnvInfo };
   get_system_overview_section: { args: { section: SystemOverviewSection }; result: SystemOverviewSectionResponse };
+  scan_driver_updates: { args: Record<string, never>; result: DriverUpdateScanResult };
   open_system_settings: { args: { target: SystemSettingsTarget }; result: void };
   export_system_overview_report: { args: { content: string }; result: string };
   restart_as_admin: { args: { sessionId: ID | null }; result: void };

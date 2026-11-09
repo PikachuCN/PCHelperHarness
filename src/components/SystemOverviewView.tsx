@@ -6,6 +6,7 @@ import { buildDiagnosticSummary, buildSystemOverviewMarkdown } from "../lib/syst
 import { displayText, formatBytes, formatDateTime, formatUptime, licenseStatusLabel, licenseStatusTone } from "../lib/systemOverviewFormat";
 import type { ActivationInfo, HardwareInfo, StorageInfo, SystemBasicInfo, SystemOverviewSection } from "../lib/types";
 import { IconButton } from "./Controls";
+import DriverSection from "./DriverSection";
 import { ActivationSection, BasicSection, HardwareSection, NetworkSection, SecuritySection, SoftwareSection, StorageSection } from "./SystemOverviewSections";
 import { StatusBadge } from "./SystemOverviewCard";
 
@@ -20,7 +21,7 @@ interface OverviewGroup {
 
 const overviewGroups: readonly OverviewGroup[] = [
   { id: "system", label: "系统", icon: Monitor, sections: [{ id: "basic", label: "基础信息" }, { id: "activation", label: "激活情况" }] },
-  { id: "hardware", label: "硬件与存储", icon: Cpu, sections: [{ id: "hardware", label: "硬件信息" }, { id: "storage", label: "存储与磁盘" }] },
+  { id: "hardware", label: "硬件与存储", icon: Cpu, sections: [{ id: "hardware", label: "硬件信息" }, { id: "storage", label: "存储与磁盘" }, { id: "drivers", label: "驱动管理" }] },
   { id: "connectivity", label: "网络与安全", icon: Wifi, sections: [{ id: "network", label: "网络连接" }, { id: "security", label: "安全与更新" }] },
   { id: "software", label: "软件", icon: AppWindow, sections: [{ id: "software", label: "软件安装情况" }] },
 ];
@@ -31,6 +32,7 @@ function renderOverviewSection(section: SystemOverviewSection) {
     case "activation": return <ActivationSection />;
     case "hardware": return <HardwareSection />;
     case "storage": return <StorageSection />;
+    case "drivers": return <DriverSection />;
     case "network": return <NetworkSection />;
     case "security": return <SecuritySection />;
     case "software": return <SoftwareSection />;

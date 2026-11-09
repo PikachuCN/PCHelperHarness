@@ -18,6 +18,7 @@ enum OverviewSection {
     Basic,
     Activation,
     Hardware,
+    Drivers,
     Software,
     Storage,
     Network,
@@ -30,12 +31,13 @@ impl OverviewSection {
             "basic" => Ok(Self::Basic),
             "activation" => Ok(Self::Activation),
             "hardware" => Ok(Self::Hardware),
+            "drivers" => Ok(Self::Drivers),
             "software" => Ok(Self::Software),
             "storage" => Ok(Self::Storage),
             "network" => Ok(Self::Network),
             "security" => Ok(Self::Security),
             _ => Err(format!(
-                "不支持的系统概况分区：{value}；仅支持 basic、activation、hardware、software、storage、network、security"
+                "不支持的系统概况分区：{value}；仅支持 basic、activation、hardware、drivers、software、storage、network、security"
             )),
         }
     }
@@ -45,6 +47,7 @@ impl OverviewSection {
             Self::Basic => "basic",
             Self::Activation => "activation",
             Self::Hardware => "hardware",
+            Self::Drivers => "drivers",
             Self::Software => "software",
             Self::Storage => "storage",
             Self::Network => "network",
@@ -56,7 +59,7 @@ impl OverviewSection {
         match self {
             Self::Basic => 30,
             Self::Activation | Self::Security => 90,
-            Self::Hardware | Self::Software | Self::Storage | Self::Network => 60,
+            Self::Hardware | Self::Drivers | Self::Software | Self::Storage | Self::Network => 60,
         }
     }
 }
@@ -113,6 +116,13 @@ pub async fn get_system_overview_section(
 }
 
 #[tauri::command]
+pub async fn scan_driver_updates() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(collect_driver_update_scan)
+        .await
+        .map_err(|error| format!("驱动更新扫描任务失败：{error}"))?
+}
+
+#[tauri::command]
 pub fn open_system_settings(target: String) -> Result<(), String> {
     open_settings_target(SettingsTarget::parse(&target)?)
 }
@@ -158,6 +168,27 @@ fn export_to(directory: &Path, content: &str) -> io::Result<PathBuf> {
 
 #[cfg(windows)]
 fn collect_section(section: OverviewSection) -> Result<Value, String> {
+    let section_name = section.as_str();
+    let script = crate::system_overview_scripts::get(section_name)
+        .ok_or_else(|| format!("未找到系统概况分区脚本：{section_name}"))?;
+    run_powershell_json(section_name, script, section.timeout_seconds())
+}
+
+#[cfg(windows)]
+fn collect_driver_update_scan() -> Result<Value, String> {
+    run_powershell_json(
+        "driverUpdateScan",
+        crate::system_overview_scripts::DRIVER_UPDATE_SCAN,
+        120,
+    )
+}
+
+#[cfg(windows)]
+fn run_powershell_json(
+    section_name: &str,
+    script: &str,
+    timeout_seconds: u64,
+) -> Result<Value, String> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
     use std::io::Read as _;
     use std::os::windows::process::CommandExt;
@@ -165,9 +196,6 @@ fn collect_section(section: OverviewSection) -> Result<Value, String> {
     use std::thread;
     use std::time::{Duration, Instant};
 
-    let section_name = section.as_str();
-    let script = crate::system_overview_scripts::get(section_name)
-        .ok_or_else(|| format!("未找到系统概况分区脚本：{section_name}"))?;
     let command = format!("{}\n{script}", crate::system_overview_scripts::PREAMBLE);
     let encoded = BASE64.encode(
         command
@@ -203,7 +231,6 @@ fn collect_section(section: OverviewSection) -> Result<Value, String> {
         stderr.read_to_end(&mut bytes).map(|_| bytes)
     });
 
-    let timeout_seconds = section.timeout_seconds();
     let started = Instant::now();
     let wait_result = loop {
         match child.try_wait() {
@@ -268,6 +295,11 @@ fn collect_section(_section: OverviewSection) -> Result<Value, String> {
     Err("系统概况采集仅支持 Windows".to_string())
 }
 
+#[cfg(not(windows))]
+fn collect_driver_update_scan() -> Result<Value, String> {
+    Err("驱动更新扫描仅支持 Windows".to_string())
+}
+
 #[cfg(windows)]
 fn open_settings_target(target: SettingsTarget) -> Result<(), String> {
     if let Some(uri) = target.settings_uri() {
@@ -315,6 +347,7 @@ mod tests {
             "basic",
             "activation",
             "hardware",
+            "drivers",
             "software",
             "storage",
             "network",
@@ -387,5 +420,21 @@ mod tests {
         assert!(script.contains("IPv4Connectivity -eq 'Internet'"));
         assert!(!script.contains("IPv4Connectivity -in @('LocalNetwork', 'Internet')"));
         assert!(script.contains("-AddressFamily IPv4"));
+    }
+
+    #[test]
+    fn driver_scan_searches_without_downloading_or_installing() {
+        let script = crate::system_overview_scripts::DRIVER_UPDATE_SCAN;
+        assert!(script.contains("Type='Driver'"));
+        assert!(script.contains("IsInstalled=0"));
+        for forbidden in [
+            "CreateUpdateDownloader",
+            "CreateUpdateInstaller",
+            ".Download()",
+            ".Install()",
+            "AcceptEula",
+        ] {
+            assert!(!script.contains(forbidden), "扫描脚本不得包含 {forbidden}");
+        }
     }
 }

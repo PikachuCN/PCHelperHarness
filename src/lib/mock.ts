@@ -1,5 +1,5 @@
 import { emitMockEvent } from "./events";
-import { mockSystemOverviewSection } from "./mockSystemOverview";
+import { mockDriverUpdateScan, mockSystemOverviewSection } from "./mockSystemOverview";
 import type {
   AppConfig,
   ChatMessage,
@@ -360,6 +360,9 @@ export async function mockInvoke<K extends IpcCommand>(command: K, rawArgs: IpcC
       await new Promise((resolve) => window.setTimeout(resolve, 260));
       return mockSystemOverviewSection(section);
     }
+    case "scan_driver_updates":
+      await new Promise((resolve) => window.setTimeout(resolve, 650));
+      return mockDriverUpdateScan();
     case "open_system_settings": return undefined;
     case "export_system_overview_report": return "C:\\Users\\User\\Documents\\Harness\\系统概况-脱敏.md";
     default: {

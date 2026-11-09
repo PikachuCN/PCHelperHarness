@@ -572,6 +572,90 @@
 .installed-software-row span,
 .installed-software-row small { color: var(--text-tertiary); font-size: 10px; }
 
+/* Driver detection and Windows Update repair */
+.driver-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.driver-summary-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.driver-summary-grid > div > span:first-child { color: var(--text-secondary); font-size: 10px; }
+.driver-summary-grid strong { font-size: 20px; font-weight: 600; line-height: 1.3; }
+.driver-summary-grid small { color: var(--text-tertiary); font-size: 10px; }
+
+.driver-repair-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 18px;
+  padding: 14px;
+  margin-bottom: 16px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-soft-hover);
+  border-radius: 8px;
+}
+
+.driver-repair-heading { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
+.driver-repair-icon { display: inline-flex; flex: 0 0 auto; margin-top: 1px; color: var(--accent); }
+.driver-repair-heading h3 { font-size: 12px; font-weight: 600; }
+.driver-repair-heading p { margin-top: 3px; color: var(--text-secondary); font-size: 11px; }
+.driver-repair-actions { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; justify-content: flex-end; }
+.driver-repair-steps { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; list-style: none; }
+.driver-repair-steps li { display: flex; gap: 6px; align-items: center; color: var(--text-secondary); font-size: 10px; }
+.driver-repair-steps li > span { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; color: var(--accent); font-size: 10px; background: var(--surface); border: 1px solid var(--accent-soft-hover); border-radius: 50%; }
+.driver-repair-note { grid-column: 1 / -1; color: var(--text-tertiary); font-size: 10px; }
+.driver-scan-error { margin-bottom: 14px; }
+
+.driver-update-results,
+.driver-problems { padding-top: 14px; margin-top: 14px; border-top: 1px solid var(--border); }
+.driver-subsection-heading { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
+.driver-subsection-heading h3 { font-size: 12px; font-weight: 600; }
+.driver-subsection-heading p { margin-top: 2px; color: var(--text-tertiary); font-size: 10px; }
+.driver-empty-state { padding: 12px; color: var(--text-secondary); font-size: 11px; background: var(--surface-subtle); border-radius: 6px; }
+
+.driver-update-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 0;
+  border-top: 1px solid var(--border);
+}
+.driver-update-copy { display: flex; flex-direction: column; min-width: 0; }
+.driver-update-copy strong { font-size: 11px; }
+.driver-update-copy span,
+.driver-update-copy small { color: var(--text-tertiary); font-size: 10px; overflow-wrap: anywhere; }
+.driver-update-badges { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+
+.driver-problem-row { padding: 12px; margin-top: 8px; background: var(--red-soft); border: 1px solid var(--red-border); border-radius: 7px; }
+.driver-problem-title { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.driver-problem-title > div { display: flex; flex-direction: column; min-width: 0; }
+.driver-problem-title strong { font-size: 12px; }
+.driver-problem-title span { color: var(--text-secondary); font-size: 10px; }
+.driver-problem-reason { margin: 5px 0 8px; color: var(--red); font-size: 11px; }
+.driver-problem-row .overview-info-grid > div:last-child { border-bottom: 0; }
+.driver-catalog { margin-top: 16px; }
+.driver-catalog-row { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 10px 4px; border-top: 1px solid var(--border); }
+.driver-catalog-row > div { display: flex; flex-direction: column; min-width: 0; }
+.driver-catalog-row > div:first-child { flex: 1; }
+.driver-catalog-row > div:last-child { flex: 0 0 auto; align-items: flex-end; text-align: right; }
+.driver-catalog-row strong { font-size: 11px; }
+.driver-catalog-row span,
+.driver-catalog-row small { color: var(--text-tertiary); font-size: 10px; overflow-wrap: anywhere; }
+.driver-catalog-row .overview-status { margin-top: 3px; }
+
 .overview-page-footer { display: flex; gap: 9px; align-items: center; justify-content: center; padding-top: 22px; color: var(--text-tertiary); font-size: 10px; text-align: center; }
 
 @keyframes overview-pulse { from { opacity: 0.45; } to { opacity: 1; } }
@@ -597,6 +681,11 @@
   .overview-privacy-note { width: 100%; }
   .security-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .common-software-grid { grid-template-columns: minmax(0, 1fr); }
+  .driver-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .driver-repair-panel { grid-template-columns: minmax(0, 1fr); }
+  .driver-repair-actions { justify-content: flex-start; }
+  .driver-update-row { align-items: flex-start; flex-direction: column; }
+  .driver-update-badges { justify-content: flex-start; }
 }
 
 @media (max-width: 780px) {

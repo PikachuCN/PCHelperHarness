@@ -1,4 +1,4 @@
-import type { SystemOverviewSection, SystemOverviewSectionResponse } from "./types";
+import type { DriverUpdateScanResult, SystemOverviewSection, SystemOverviewSectionResponse } from "./types";
 
 const data = {
   basic: {
@@ -53,6 +53,19 @@ const data = {
     graphics: [{ name: "Intel(R) Iris(R) Xe Graphics", adapterRamBytes: 2_147_483_648, driverVersion: "32.0.101.6129", videoMode: "2880 x 1800 x 4294967296 colors", resolution: "2880 × 1800" }],
     audio: [{ name: "Realtek High Definition Audio", manufacturer: "Realtek", status: "OK" }],
     batteries: [{ name: "LNV-5B10W51866", chargePercent: 86, status: "Good", designVoltageMv: 15_480 }],
+    warnings: [],
+  },
+  drivers: {
+    summary: { totalDevices: 168, driverCount: 164, problemCount: 1, missingDriverCount: 1, unsignedDriverCount: 0 },
+    problems: [{ deviceId: "USB\\VID_046D&PID_C534\\MOCK", deviceName: "USB 输入设备", className: "HID", manufacturer: "Logitech", provider: null, version: null, driverDate: null, status: "Error", problemCode: 28 }],
+    drivers: [
+      { deviceId: "PCI\\VEN_8086&DEV_A0F0\\MOCK", deviceName: "Intel(R) Wi-Fi 6E AX211 160MHz", className: "NET", manufacturer: "Intel Corporation", provider: "Intel", version: "23.110.0.5", driverDate: "2025-08-20T00:00:00+08:00", infName: "oem42.inf", isSigned: true, status: "OK", problemCode: 0 },
+      { deviceId: "PCI\\VEN_8086&DEV_9A49\\MOCK", deviceName: "Intel(R) Iris(R) Xe Graphics", className: "DISPLAY", manufacturer: "Intel Corporation", provider: "Intel Corporation", version: "32.0.101.6129", driverDate: "2025-09-12T00:00:00+08:00", infName: "oem38.inf", isSigned: true, status: "OK", problemCode: 0 },
+      { deviceId: "HDAUDIO\\FUNC_01&VEN_10EC\\MOCK", deviceName: "Realtek High Definition Audio", className: "MEDIA", manufacturer: "Realtek", provider: "Realtek Semiconductor Corp.", version: "6.0.9700.1", driverDate: "2025-06-18T00:00:00+08:00", infName: "oem27.inf", isSigned: true, status: "OK", problemCode: 0 },
+      { deviceId: "ACPI\\LEN0300\\MOCK", deviceName: "ThinkPad UltraNav Pointing Device", className: "MOUSE", manufacturer: "LENOVO", provider: "Synaptics", version: "19.5.35.62", driverDate: "2025-04-02T00:00:00+08:00", infName: "oem19.inf", isSigned: true, status: "OK", problemCode: 0 },
+      { deviceId: "USB\\VID_046D&PID_C534\\MOCK", deviceName: "USB 输入设备", className: "HID", manufacturer: "Logitech", provider: null, version: null, driverDate: null, infName: null, isSigned: null, status: "Error", problemCode: 28 },
+    ],
+    updateScan: null,
     warnings: [],
   },
   software: {
@@ -121,4 +134,15 @@ const data = {
 
 export function mockSystemOverviewSection(section: SystemOverviewSection): SystemOverviewSectionResponse {
   return structuredClone({ section, data: data[section] }) as SystemOverviewSectionResponse;
+}
+
+export function mockDriverUpdateScan(): DriverUpdateScanResult {
+  return {
+    scannedAt: new Date().toISOString(),
+    updates: [
+      { id: "mock-intel-chipset-2026", title: "Intel Corporation - System - 10.1.19614.8666", manufacturer: "Intel Corporation", model: "Intel Chipset Device", className: "System", driverDate: "2026-08-14T00:00:00+08:00", deviceId: "PCI\\VEN_8086&DEV_9A03\\MOCK", hardwareId: "PCI\\VEN_8086&DEV_9A03", isDownloaded: false, isMandatory: false, isOptional: true, rebootRequired: true, kbArticles: [] },
+      { id: "mock-realtek-audio-2026", title: "Realtek Semiconductor Corp. - MEDIA - 6.0.9812.1", manufacturer: "Realtek Semiconductor Corp.", model: "Realtek High Definition Audio", className: "MEDIA", driverDate: "2026-09-22T00:00:00+08:00", deviceId: "HDAUDIO\\FUNC_01&VEN_10EC\\MOCK", hardwareId: "HDAUDIO\\FUNC_01&VEN_10EC", isDownloaded: true, isMandatory: false, isOptional: true, rebootRequired: false, kbArticles: [] },
+    ],
+    warnings: [],
+  };
 }

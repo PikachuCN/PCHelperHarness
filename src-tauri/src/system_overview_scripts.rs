@@ -289,6 +289,150 @@ ConvertTo-Json -InputObject ([ordered]@{
 }) -Depth 5 -Compress
 "#;
 
+const DRIVERS: &str = r#"
+$warnings = @()
+$devices = @()
+$drivers = @()
+$problems = @()
+try {
+    $devices = @(Get-CimInstance -ClassName Win32_PnPEntity -ErrorAction Stop)
+} catch {
+    $warnings += "设备信息读取失败：$($_.Exception.Message)"
+}
+$devicesById = @{}
+foreach ($device in $devices) {
+    if (-not [string]::IsNullOrWhiteSpace([string]$device.DeviceID)) {
+        $devicesById[[string]$device.DeviceID] = $device
+    }
+}
+try {
+    $drivers = @(Get-CimInstance -ClassName Win32_PnPSignedDriver -ErrorAction Stop | ForEach-Object {
+        $device = $devicesById[[string]$_.DeviceID]
+        $problemCode = 0
+        if ($null -ne $device -and $null -ne $device.ConfigManagerErrorCode) {
+            $problemCode = [int]$device.ConfigManagerErrorCode
+        }
+        [pscustomobject][ordered]@{
+            deviceId = $_.DeviceID
+            deviceName = $_.DeviceName
+            className = $_.DeviceClass
+            manufacturer = $_.Manufacturer
+            provider = $_.DriverProviderName
+            version = $_.DriverVersion
+            driverDate = Convert-ToIsoDate $_.DriverDate
+            infName = $_.InfName
+            isSigned = $_.IsSigned
+            status = $device.Status
+            problemCode = $problemCode
+        }
+    } | Sort-Object deviceName)
+} catch {
+    $warnings += "驱动清单读取失败：$($_.Exception.Message)"
+}
+$driversById = @{}
+foreach ($driver in $drivers) {
+    if (-not [string]::IsNullOrWhiteSpace([string]$driver.deviceId)) {
+        $driversById[[string]$driver.deviceId] = $driver
+    }
+}
+$problems = @($devices | Where-Object {
+    $null -ne $_.ConfigManagerErrorCode -and [int]$_.ConfigManagerErrorCode -notin @(0, 22, 45)
+} | ForEach-Object {
+    $driver = $driversById[[string]$_.DeviceID]
+    [pscustomobject][ordered]@{
+        deviceId = $_.DeviceID
+        deviceName = $_.Name
+        className = $_.ClassGuid
+        manufacturer = $_.Manufacturer
+        provider = $driver.provider
+        version = $driver.version
+        driverDate = $driver.driverDate
+        status = $_.Status
+        problemCode = [int]$_.ConfigManagerErrorCode
+    }
+} | Sort-Object problemCode, deviceName)
+$missingDriverCount = @($problems | Where-Object { $_.problemCode -eq 28 }).Count
+$unsignedDriverCount = @($drivers | Where-Object { $_.isSigned -eq $false -or $_.problemCode -eq 52 }).Count
+$summary = [ordered]@{
+    totalDevices = $devices.Count
+    driverCount = $drivers.Count
+    problemCount = $problems.Count
+    missingDriverCount = $missingDriverCount
+    unsignedDriverCount = $unsignedDriverCount
+}
+ConvertTo-Json -InputObject ([ordered]@{
+    summary = $summary
+    problems = $problems
+    drivers = $drivers
+    updateScan = $null
+    warnings = $warnings
+}) -Depth 5 -Compress
+"#;
+
+pub(crate) const DRIVER_UPDATE_SCAN: &str = r#"
+function Get-ComProperty($Object, $Name) {
+    if ($null -eq $Object) { return $null }
+    try { return $Object.$Name } catch { return $null }
+}
+function Release-ComObject($Value) {
+    if ($null -ne $Value -and [Runtime.InteropServices.Marshal]::IsComObject($Value)) {
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($Value)
+    }
+}
+$session = $null
+$searcher = $null
+$searchResult = $null
+$updates = @()
+try {
+    $session = New-Object -ComObject Microsoft.Update.Session
+    $session.ClientApplicationID = 'Harness Driver Update Scan'
+    $searcher = $session.CreateUpdateSearcher()
+    $searchResult = $searcher.Search("IsInstalled=0 and Type='Driver' and IsHidden=0")
+    for ($index = 0; $index -lt $searchResult.Updates.Count; $index++) {
+        $update = $searchResult.Updates.Item($index)
+        $identity = Get-ComProperty $update 'Identity'
+        $installation = Get-ComProperty $update 'InstallationBehavior'
+        $rebootBehavior = Get-ComProperty $installation 'RebootBehavior'
+        $rebootRequired = $null
+        if ($null -ne $rebootBehavior) { $rebootRequired = [int]$rebootBehavior -gt 0 }
+        $kbArticles = @()
+        $kbValues = Get-ComProperty $update 'KBArticleIDs'
+        if ($null -ne $kbValues) { $kbArticles = @($kbValues | ForEach-Object { [string]$_ }) }
+        $hardwareId = Get-ComProperty $update 'HardwareID'
+        if ($hardwareId -is [array]) { $hardwareId = $hardwareId -join ', ' }
+        $updates += [pscustomobject][ordered]@{
+            id = Get-ComProperty $identity 'UpdateID'
+            title = Get-ComProperty $update 'Title'
+            manufacturer = Get-ComProperty $update 'DriverManufacturer'
+            model = Get-ComProperty $update 'DriverModel'
+            className = Get-ComProperty $update 'DriverClass'
+            driverDate = Convert-ToIsoDate (Get-ComProperty $update 'DriverVerDate')
+            deviceId = Get-ComProperty $update 'DeviceID'
+            hardwareId = $hardwareId
+            isDownloaded = Get-ComProperty $update 'IsDownloaded'
+            isMandatory = Get-ComProperty $update 'IsMandatory'
+            isOptional = Get-ComProperty $update 'BrowseOnly'
+            rebootRequired = $rebootRequired
+            kbArticles = $kbArticles
+        }
+        Release-ComObject $installation
+        Release-ComObject $identity
+        Release-ComObject $update
+    }
+} catch {
+    throw "Windows 更新驱动扫描失败：$($_.Exception.Message)"
+} finally {
+    Release-ComObject $searchResult
+    Release-ComObject $searcher
+    Release-ComObject $session
+}
+ConvertTo-Json -InputObject ([ordered]@{
+    scannedAt = (Get-Date).ToString('o')
+    updates = $updates
+    warnings = @()
+}) -Depth 5 -Compress
+"#;
+
 const SOFTWARE: &str = r#"
 $warnings = @()
 $installed = @()
@@ -592,6 +736,7 @@ pub(crate) fn get(section: &str) -> Option<&'static str> {
         "basic" => Some(BASIC),
         "activation" => Some(ACTIVATION),
         "hardware" => Some(HARDWARE),
+        "drivers" => Some(DRIVERS),
         "software" => Some(SOFTWARE),
         "storage" => Some(STORAGE),
         "network" => Some(NETWORK),

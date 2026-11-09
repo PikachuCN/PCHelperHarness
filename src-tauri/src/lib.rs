@@ -508,6 +508,7 @@ pub fn run() {
             get_env_info,
             restart_as_admin,
             system_overview::get_system_overview_section,
+            system_overview::scan_driver_updates,
             system_overview::open_system_settings,
             system_overview::export_system_overview_report,
         ])

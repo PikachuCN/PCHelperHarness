@@ -5,6 +5,8 @@ import type {
   ApprovalMode,
   ApprovalResolution,
   ChatMessage,
+  DriverInfo,
+  DriverUpdateScanResult,
   EnvInfo,
   HarnessEventMap,
   HarnessEventName,
@@ -27,7 +29,7 @@ interface ToastState {
   tone: "info" | "success" | "error";
 }
 
-export const systemOverviewSections: SystemOverviewSection[] = ["basic", "activation", "hardware", "software", "storage", "network", "security"];
+export const systemOverviewSections: SystemOverviewSection[] = ["basic", "activation", "hardware", "drivers", "software", "storage", "network", "security"];
 
 interface HarnessState {
   initialized: boolean;
@@ -48,6 +50,7 @@ interface HarnessState {
   settingsOpen: boolean;
   activeView: "chat" | "systemOverview";
   systemOverview: Partial<Record<SystemOverviewSection, SystemOverviewSectionState>>;
+  driverUpdateScan: SystemOverviewSectionState<DriverUpdateScanResult>;
   selectedModel: string;
   availableModels: string[];
   approvalMode: ApprovalMode;
@@ -67,6 +70,7 @@ interface HarnessState {
   openSystemOverview: () => void;
   loadSystemOverviewSection: (section: SystemOverviewSection, force?: boolean) => Promise<void>;
   refreshSystemOverview: () => void;
+  scanDriverUpdates: () => Promise<void>;
   exportSystemOverview: (content: string) => Promise<void>;
   openSystemSettings: (target: SystemSettingsTarget) => Promise<void>;
   toggleSidebar: () => void;
@@ -207,6 +211,7 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   settingsOpen: false,
   activeView: "chat",
   systemOverview: {},
+  driverUpdateScan: { status: "idle" },
   selectedModel: "",
   availableModels: [],
   approvalMode: "manual",
@@ -489,10 +494,13 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
     }));
     try {
       const response = await ipcInvoke("get_system_overview_section", { section });
+      const data = section === "drivers" && response.section === "drivers"
+        ? { ...response.data, updateScan: get().driverUpdateScan.data ?? null }
+        : response.data;
       set((state) => ({
         systemOverview: {
           ...state.systemOverview,
-          [section]: { status: "success", data: response.data, loadedAt: new Date().toISOString() },
+          [section]: { status: "success", data, loadedAt: new Date().toISOString() },
         },
       }));
     } catch (error) {
@@ -507,6 +515,29 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
 
   refreshSystemOverview: () => {
     for (const section of systemOverviewSections) void get().loadSystemOverviewSection(section, true);
+  },
+
+  scanDriverUpdates: async () => {
+    if (get().driverUpdateScan.status === "loading") return;
+    set((state) => ({ driverUpdateScan: { ...state.driverUpdateScan, status: "loading", error: undefined } }));
+    try {
+      const result = await ipcInvoke("scan_driver_updates", {});
+      set((state) => {
+        const driverState = state.systemOverview.drivers;
+        const driverData = driverState?.data as DriverInfo | undefined;
+        return {
+          driverUpdateScan: { status: "success", data: result, loadedAt: new Date().toISOString() },
+          systemOverview: driverData ? {
+            ...state.systemOverview,
+            drivers: { status: driverState?.status ?? "success", data: { ...driverData, updateScan: result }, loadedAt: driverState?.loadedAt, error: driverState?.error },
+          } : state.systemOverview,
+        };
+      });
+      get().notify(result.updates.length ? `发现 ${result.updates.length} 个可用驱动更新` : "Windows 更新暂未提供适用的驱动更新", "success");
+    } catch (error) {
+      set((state) => ({ driverUpdateScan: { ...state.driverUpdateScan, status: "error", error: String(error) } }));
+      get().notify(`驱动更新扫描失败：${String(error)}`, "error");
+    }
   },
 
   exportSystemOverview: async (content) => {

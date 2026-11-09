@@ -1,5 +1,5 @@
-import type { ActivationInfo, HardwareInfo, NetworkInfo, SecurityInfo, SoftwareInfo, StorageInfo, SystemBasicInfo, SystemOverviewSnapshot } from "./types";
-import { boolLabel, displayText, formatBytes, formatDateOnly, formatDateTime, formatUptime, licenseStatusLabel, percentUsed, softwareCategoryLabel } from "./systemOverviewFormat";
+import type { ActivationInfo, DriverInfo, HardwareInfo, NetworkInfo, SecurityInfo, SoftwareInfo, StorageInfo, SystemBasicInfo, SystemOverviewSnapshot } from "./types";
+import { boolLabel, displayText, driverProblemLabel, formatBytes, formatDateOnly, formatDateTime, formatUptime, licenseStatusLabel, percentUsed, softwareCategoryLabel } from "./systemOverviewFormat";
 
 function sectionData<T>(snapshot: SystemOverviewSnapshot, section: keyof SystemOverviewSnapshot): T | undefined {
   return snapshot[section]?.data as T | undefined;
@@ -18,6 +18,7 @@ export function buildDiagnosticSummary(snapshot: SystemOverviewSnapshot): string
   const basic = sectionData<SystemBasicInfo>(snapshot, "basic");
   const activation = sectionData<ActivationInfo>(snapshot, "activation");
   const hardware = sectionData<HardwareInfo>(snapshot, "hardware");
+  const drivers = sectionData<DriverInfo>(snapshot, "drivers");
   const storage = sectionData<StorageInfo>(snapshot, "storage");
   const network = sectionData<NetworkInfo>(snapshot, "network");
   const security = sectionData<SecurityInfo>(snapshot, "security");
@@ -29,6 +30,7 @@ export function buildDiagnosticSummary(snapshot: SystemOverviewSnapshot): string
     `Windows 激活：${activation?.windows ? licenseStatusLabel(activation.windows.status) : "未读取"}`,
     `处理器：${displayText(processor)}`,
     `内存：${hardware?.memoryTotalBytes ? formatBytes(hardware.memoryTotalBytes) : "未读取"}`,
+    `驱动异常：${drivers ? `${drivers.summary.problemCount} 项（缺失驱动 ${drivers.summary.missingDriverCount} 项）` : "未读取"}`,
     `系统盘：${volume ? `${volume.driveLetter} 剩余 ${formatBytes(volume.freeBytes)} / ${formatBytes(volume.sizeBytes)}（已用 ${percentUsed(volume.sizeBytes, volume.freeBytes).toFixed(0)}%）` : "未读取"}`,
     `开机时长：${basic ? formatUptime(basic.uptimeSeconds) : "未读取"}`,
     `网络：${network ? (network.isConnected ? "已连接互联网" : "未检测到互联网连接") : "未读取"}`,
@@ -60,6 +62,7 @@ function unavailable(lines: string[], available: boolean): boolean {
 function redactSensitiveIdentifiers(content: string, snapshot: SystemOverviewSnapshot): string {
   const basic = sectionData<SystemBasicInfo>(snapshot, "basic");
   const hardware = sectionData<HardwareInfo>(snapshot, "hardware");
+  const drivers = sectionData<DriverInfo>(snapshot, "drivers");
   const storage = sectionData<StorageInfo>(snapshot, "storage");
   const network = sectionData<NetworkInfo>(snapshot, "network");
   const identifiers = new Set<string>();
@@ -72,6 +75,9 @@ function redactSensitiveIdentifiers(content: string, snapshot: SystemOverviewSna
   add(hardware?.motherboard.serialNumber);
   add(hardware?.bios.serialNumber);
   hardware?.memoryModules.forEach((item) => add(item.serialNumber));
+  drivers?.drivers.forEach((item) => add(item.deviceId));
+  drivers?.problems.forEach((item) => add(item.deviceId));
+  drivers?.updateScan?.updates.forEach((item) => { add(item.deviceId); add(item.hardwareId); });
   storage?.physicalDisks.forEach((item) => add(item.serialNumber));
   network?.adapters.forEach((item) => {
     add(item.macAddress);
@@ -86,6 +92,7 @@ export function buildSystemOverviewMarkdown(snapshot: SystemOverviewSnapshot): s
   const basic = sectionData<SystemBasicInfo>(snapshot, "basic");
   const activation = sectionData<ActivationInfo>(snapshot, "activation");
   const hardware = sectionData<HardwareInfo>(snapshot, "hardware");
+  const drivers = sectionData<DriverInfo>(snapshot, "drivers");
   const software = sectionData<SoftwareInfo>(snapshot, "software");
   const storage = sectionData<StorageInfo>(snapshot, "storage");
   const network = sectionData<NetworkInfo>(snapshot, "network");
@@ -95,7 +102,7 @@ export function buildSystemOverviewMarkdown(snapshot: SystemOverviewSnapshot): s
     "",
     `生成时间：${formatDateTime(new Date().toISOString())}`,
     "",
-    "> 本报告由本机只读信息生成。设备名、用户名、IP、MAC 和硬件序列号已脱敏；不收集或显示产品密钥。",
+    "> 本报告由本机只读信息生成。设备名、用户名、IP、MAC、硬件序列号和设备标识已脱敏；不收集或显示产品密钥。",
     "",
     "## 诊断摘要",
     "",
@@ -141,6 +148,17 @@ export function buildSystemOverviewMarkdown(snapshot: SystemOverviewSnapshot): s
       ...hardware!.audio.map((item) => ["音频", `${displayText(item.name)}；${displayText(item.status)}`]),
       ...hardware!.batteries.map((item) => ["电池", `${displayText(item.name)}；电量 ${item.chargePercent ?? "未知"}%`]),
     ]);
+  }
+
+  lines.push("## 驱动管理", "");
+  if (!unavailable(lines, Boolean(drivers))) {
+    table(lines, ["设备总数", "已安装驱动", "异常设备", "缺失驱动", "签名异常"], [[drivers!.summary.totalDevices, drivers!.summary.driverCount, drivers!.summary.problemCount, drivers!.summary.missingDriverCount, drivers!.summary.unsignedDriverCount]]);
+    table(lines, ["异常设备", "异常原因", "提供商", "版本"], drivers!.problems.map((item) => [item.deviceName, `${driverProblemLabel(item.problemCode)}（代码 ${item.problemCode}）`, item.provider, item.version]));
+    table(lines, ["设备", "提供商", "驱动版本", "驱动日期", "状态"], drivers!.drivers.map((item) => [item.deviceName, item.provider, item.version, formatDateOnly(item.driverDate), item.problemCode ? driverProblemLabel(item.problemCode) : item.status || "正常"]));
+    if (drivers!.updateScan) {
+      lines.push(`Windows 更新扫描时间：${formatDateTime(drivers!.updateScan.scannedAt)}`, "");
+      table(lines, ["可用驱动更新", "制造商", "驱动日期", "已下载", "可能需要重启"], drivers!.updateScan.updates.map((item) => [item.title, item.manufacturer, formatDateOnly(item.driverDate), item.isDownloaded === null ? "未读取" : item.isDownloaded ? "是" : "否", item.rebootRequired === null ? "未读取" : item.rebootRequired ? "是" : "否"]));
+    }
   }
 
   lines.push("## 存储与磁盘", "");
