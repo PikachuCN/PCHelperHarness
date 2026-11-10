@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, MouseEvent as ReactMouseEvent } from "react";
 import {
   Download,
+  LayoutGrid,
   MessageSquareText,
   Monitor,
   PanelLeftClose,
@@ -49,6 +50,7 @@ export default function Sidebar() {
   const collapsed = useHarnessStore((state) => state.sidebarCollapsed);
   const activeView = useHarnessStore((state) => state.activeView);
   const openSystemOverview = useHarnessStore((state) => state.openSystemOverview);
+  const openToolbox = useHarnessStore((state) => state.openToolbox);
   const envInfo = useHarnessStore((state) => state.envInfo);
   const newSession = useHarnessStore((state) => state.newSession);
   const creatingSession = useHarnessStore((state) => state.creatingSession);
@@ -121,6 +123,16 @@ export default function Sidebar() {
           </button>
         </div>
         <div className="sidebar-overview-wrap">
+          <button
+            type="button"
+            className={`sidebar-overview-button ${activeView === "toolbox" ? "is-active" : ""}`}
+            onClick={openToolbox}
+            aria-current={activeView === "toolbox" ? "page" : undefined}
+            tabIndex={collapsed ? -1 : 0}
+          >
+            <LayoutGrid size={17} />
+            <span>AI 工具箱</span>
+          </button>
           <button
             type="button"
             className={`sidebar-overview-button ${activeView === "systemOverview" ? "is-active" : ""}`}

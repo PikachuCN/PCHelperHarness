@@ -55,8 +55,8 @@ export default function Composer() {
             value={value}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={onKeyDown}
-            placeholder={busyElsewhere ? "另一段对话正在生成，请稍候…" : "描述电脑问题，或粘贴报错信息…"}
-            aria-label="输入电脑问题"
+            placeholder={busyElsewhere ? "另一段对话正在生成，请稍候…" : "描述电脑问题或想完成的文件、图片、PDF 任务…"}
+            aria-label="输入电脑问题或工具任务"
             rows={1}
             disabled={busyElsewhere}
           />

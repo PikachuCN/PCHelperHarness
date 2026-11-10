@@ -4,9 +4,11 @@ import { mockCancelNetworkTask, mockRunNetworkDiagnostic, mockRunNetworkTest } f
 import type {
   AppConfig,
   ChatMessage,
+  CustomTool,
   IpcCommand,
   IpcCommandMap,
   PendingApproval,
+  PendingInteraction,
   PluginCatalog,
   PromptMessage,
   RiskAssessment,
@@ -104,8 +106,24 @@ const pluginCatalog: PluginCatalog = {
   directory: "C:\\Harness",
 };
 
+let customTools: CustomTool[] = [{
+  id: "custom-monthly-report",
+  name: "月度报表归档",
+  description: "把选中的报表复制到按月创建的目录，并统一文件名。",
+  category: "我的工具",
+  promptTemplate: "把 {{files}} 按文件修改时间归档到 {{outputFolder}} 的年月子目录，文件名保留原名。",
+  rules: "只复制不移动，不覆盖已有文件；先列出处理清单，经过批准后执行。",
+  fields: [
+    { key: "files", label: "报表文件", kind: "files", required: true, filters: [{ name: "报表", extensions: ["xlsx", "xls", "csv", "pdf"] }] },
+    { key: "outputFolder", label: "归档目录", kind: "folder", required: true },
+  ],
+  createdAt: now - 3_600_000,
+  updatedAt: now - 3_600_000,
+}];
+
 const timers = new Map<string, number[]>();
 const approvals = new Map<string, PendingApproval>();
+const pendingInteractions = new Map<string, { request: PendingInteraction; messageId: string; createTool: boolean }>();
 const confirmationStarted = new Set<string>();
 const activeMessages = new Map<string, string>();
 const pendingTurns = new Map<string, (result: { sessionId: string; turnId: string; status: TurnStatus }) => void>();
@@ -167,6 +185,41 @@ function runReadOnlyTool(sessionId: string, messageId: string) {
   later(sessionId, () => completeMockTurn(sessionId, "current-turn", "done"), 1250);
 }
 
+function runInteractionPrompt(sessionId: string, messageId: string, turnId: string, createTool: boolean) {
+  const request: PendingInteraction = {
+    id: uid(),
+    sessionId,
+    turnId,
+    callId: uid(),
+    title: createTool ? "完善个性工具的基本设置" : "确认任务需要的信息",
+    description: "AI 会根据你的回答生成可复用表单。这里演示文字、选项和原生文件夹选择等交互。",
+    fields: [
+      { key: "toolName", label: "工具名称", kind: "text", required: true, defaultValue: createTool ? "我的文件整理工具" : "" },
+      { key: "mode", label: "默认执行方式", kind: "select", required: true, defaultValue: "preview", options: [
+        { value: "preview", label: "先预览，确认后执行", description: "推荐的保守方式" },
+        { value: "direct", label: "填参后直接执行" },
+      ] },
+      { key: "folder", label: "常用工作目录", kind: "folder", required: true, description: "点击按钮会打开系统文件夹选择器。" },
+      { key: "notes", label: "补充规则", kind: "textarea", placeholder: "可选，例如保留原文件、遇到重名时跳过" },
+    ],
+  };
+  const tool: ToolRun = {
+    callId: request.callId,
+    name: "request_user_input",
+    arguments: { title: request.title, description: request.description, fields: request.fields },
+    explanationZh: "收集个性工具的必要参数",
+    risk: lowRisk,
+    status: "running",
+    output: "",
+    durationMs: 0,
+    exitCode: null,
+  };
+  histories[sessionId]?.find((item) => item.id === messageId)?.tools.push(tool);
+  emitMockEvent("tool_started", { sessionId, turnId, messageId, tool });
+  pendingInteractions.set(request.id, { request, messageId, createTool });
+  emitMockEvent("interaction_request", request);
+}
+
 function sendMockMessage(args: IpcCommandMap["send_message"]["args"]) {
   const sessionId = args.sessionId ?? uid();
   const turnId = uid();
@@ -214,6 +267,8 @@ function sendMockMessage(args: IpcCommandMap["send_message"]["args"]) {
       if (assistant) assistant.content = "这是只发送最终结果、没有逐字 delta 的回复。无需切换会话即可看到。";
       completeMockTurn(sessionId, turnId, "done");
     }, 450);
+  } else if (args.content.includes("我想创建一个可重复使用的个性工具") || args.content.includes("测试交互")) {
+    later(sessionId, () => runInteractionPrompt(sessionId, messageId, turnId, args.content.includes("我想创建一个可重复使用的个性工具")), 700);
   } else if (/C\s*盘|清理|删除|格式化/i.test(args.content)) {
     const command = "Get-ChildItem $env:TEMP | Where-Object LastWriteTime -lt (Get-Date).AddDays(-7) | Remove-Item -Recurse";
     const pendingTool: ToolRun = {
@@ -255,6 +310,11 @@ export async function mockInvoke<K extends IpcCommand>(command: K, rawArgs: IpcC
     case "cancel_turn": {
       const { sessionId } = rawArgs as IpcCommandMap["cancel_turn"]["args"];
       clearTimers(sessionId);
+      for (const [id, pending] of pendingInteractions) {
+        if (pending.request.sessionId !== sessionId) continue;
+        pendingInteractions.delete(id);
+        emitMockEvent("interaction_resolved", { interactionId: id, sessionId, callId: pending.request.callId, cancelled: true });
+      }
       completeMockTurn(sessionId, "current-turn", "cancelled");
       return undefined;
     }
@@ -295,6 +355,65 @@ export async function mockInvoke<K extends IpcCommand>(command: K, rawArgs: IpcC
       }
       return { status: args.approved ? "approved" : "rejected", requiresTypedConfirmation: false };
     }
+    case "resolve_interaction": {
+      const args = rawArgs as IpcCommandMap["resolve_interaction"]["args"];
+      const pending = pendingInteractions.get(args.interactionId);
+      if (!pending) throw new Error("交互请求已处理或不存在");
+      pendingInteractions.delete(args.interactionId);
+      const { request, messageId, createTool } = pending;
+      emitMockEvent("interaction_resolved", { interactionId: request.id, sessionId: request.sessionId, callId: request.callId, cancelled: args.cancelled });
+      const message = histories[request.sessionId]?.find((item) => item.id === messageId);
+      const previous = message?.tools.find((item) => item.callId === request.callId);
+      if (previous) {
+        finishTool(request.sessionId, messageId, {
+          ...previous,
+          status: "success",
+          output: args.cancelled ? "用户取消了本次输入" : JSON.stringify({ values: args.values }, null, 2),
+          durationMs: 680,
+          exitCode: 0,
+        });
+      }
+      if (args.cancelled) {
+        appendDelta(request.sessionId, messageId, "\n\n已取消本次工具创建，没有保存或处理任何文件。");
+      } else {
+        if (createTool) {
+          const timestamp = Date.now();
+          const name = String(args.values.toolName ?? "我的个性工具");
+          const saved: CustomTool = {
+            id: uid(),
+            name,
+            description: String(args.values.notes || "根据我的规则处理文件，执行前先展示操作清单。"),
+            category: "我的工具",
+            promptTemplate: "在 {{folder}} 中按我的要求处理文件。",
+            rules: args.values.mode === "direct" ? "参数完整时执行，所有修改仍遵循审批。" : "先预览操作清单，得到确认后再执行。",
+            fields: [{ key: "folder", label: "工作目录", kind: "folder", required: true, defaultValue: String(args.values.folder ?? "") }],
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          };
+          customTools = [saved, ...customTools];
+          emitMockEvent("custom_tools_updated", structuredClone(customTools));
+        }
+        appendDelta(request.sessionId, messageId, createTool
+          ? `\n\n个性工具 **${String(args.values.toolName ?? "我的个性工具")}** 已保存到“AI 工具箱 → 我的工具”。你可以随时填入新的目录和规则重复使用。`
+          : "\n\n已收到你提交的信息，我会按这些参数继续处理。文件修改仍会先经过审批。");
+      }
+      completeMockTurn(request.sessionId, request.turnId, "done");
+      return undefined;
+    }
+    case "pick_interaction_paths": {
+      const args = rawArgs as IpcCommandMap["pick_interaction_paths"]["args"];
+      if (args.kind === "folder") return ["D:\\Demo\\待处理文件"];
+      if (args.kind === "saveFile") return [`D:\\Demo\\${args.defaultName || "输出文件.pdf"}`];
+      if (args.kind === "files") return ["D:\\Demo\\待处理文件\\示例一.pdf", "D:\\Demo\\待处理文件\\示例二.pdf"];
+      return ["D:\\Demo\\待处理文件\\示例文件.pdf"];
+    }
+    case "list_custom_tools": return structuredClone(customTools);
+    case "delete_custom_tool": {
+      const args = rawArgs as IpcCommandMap["delete_custom_tool"]["args"];
+      customTools = customTools.filter((tool) => tool.id !== args.toolId);
+      emitMockEvent("custom_tools_updated", structuredClone(customTools));
+      return structuredClone(customTools);
+    }
     case "list_sessions": return structuredClone(sessions);
     case "load_session": {
       const { sessionId } = rawArgs as IpcCommandMap["load_session"]["args"];
@@ -325,6 +444,9 @@ export async function mockInvoke<K extends IpcCommand>(command: K, rawArgs: IpcC
       sessions = sessions.filter((item) => item.id !== sessionId);
       delete histories[sessionId];
       clearTimers(sessionId);
+      for (const [id, pending] of pendingInteractions) {
+        if (pending.request.sessionId === sessionId) pendingInteractions.delete(id);
+      }
       return undefined;
     }
     case "export_session": return "C:\\Users\\User\\Documents\\Harness\\对话导出.md";

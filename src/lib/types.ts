@@ -7,6 +7,54 @@ export type ProviderProtocol = "chat_completions" | "responses";
 export type ThemeMode = "system" | "light" | "dark";
 export type TurnStatus = "done" | "cancelled" | "error" | "max_steps";
 
+export type InteractionFieldKind = "text" | "textarea" | "number" | "select" | "multiSelect" | "toggle" | "file" | "files" | "folder" | "saveFile";
+export type InteractionValue = string | number | boolean | string[] | null;
+
+export interface InteractionOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface FileFilter {
+  name: string;
+  extensions: string[];
+}
+
+export interface InteractionField {
+  key: string;
+  label: string;
+  description?: string;
+  kind: InteractionFieldKind;
+  required?: boolean;
+  placeholder?: string;
+  defaultValue?: InteractionValue;
+  options?: InteractionOption[];
+  filters?: FileFilter[];
+}
+
+export interface PendingInteraction {
+  id: ID;
+  sessionId: ID;
+  turnId: ID;
+  callId: ID;
+  title: string;
+  description: string;
+  fields: InteractionField[];
+}
+
+export interface CustomTool {
+  id: ID;
+  name: string;
+  description: string;
+  category: string;
+  promptTemplate: string;
+  rules?: string;
+  fields: InteractionField[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface SessionSummary {
   id: ID;
   title: string;
@@ -424,7 +472,7 @@ export interface TurnDoneEvent {
   error?: string;
 }
 
-export type TurnPhase = "preparing" | "connecting" | "reasoning" | "responding" | "approval" | "tool" | "organizing" | "stopping" | "done" | "cancelled" | "error" | "max_steps";
+export type TurnPhase = "preparing" | "connecting" | "reasoning" | "responding" | "approval" | "interaction" | "tool" | "organizing" | "stopping" | "done" | "cancelled" | "error" | "max_steps";
 
 export interface TurnActivityEvent {
   id: string;
@@ -489,6 +537,9 @@ export interface HarnessEventMap {
   config_path_fallback: ConfigPathFallbackEvent;
   config_warning: ConfigWarningEvent;
   network_progress: NetworkProgressEvent;
+  interaction_request: PendingInteraction;
+  interaction_resolved: { interactionId: ID; sessionId: ID; callId: ID; cancelled: boolean };
+  custom_tools_updated: CustomTool[];
 }
 
 export type HarnessEventName = keyof HarnessEventMap;
@@ -531,6 +582,10 @@ export interface IpcCommandMap {
   cancel_network_task: { args: { taskId: string }; result: void };
   export_network_report: { args: { content: string; format: "markdown" | "json" }; result: string };
   restart_as_admin: { args: { sessionId: ID | null }; result: void };
+  resolve_interaction: { args: { interactionId: ID; values: Record<string, unknown>; cancelled: boolean }; result: void };
+  pick_interaction_paths: { args: { kind: InteractionFieldKind; title?: string; filters?: FileFilter[]; defaultName?: string }; result: string[] };
+  list_custom_tools: { args: Record<string, never>; result: CustomTool[] };
+  delete_custom_tool: { args: { toolId: ID }; result: CustomTool[] };
 }
 
 export type IpcCommand = keyof IpcCommandMap;

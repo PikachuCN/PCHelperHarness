@@ -1,12 +1,14 @@
 pub mod approval;
+pub mod interaction;
 pub mod prompt;
 pub mod session;
 
 use crate::config::{ApiKey, ApprovalConfig, ApprovalMode, Config};
 use crate::llm::{Message, StreamEvent};
 use crate::risk::{self, RiskLevel};
-use crate::tools::{self, ToolOutput, ToolRequest};
+use crate::tools::{self, ToolOutput, ToolRequest, ToolResult};
 use approval::{ApprovalGate, ApprovalRequest};
+use interaction::{InteractionGate, InteractionRequest};
 use serde::Serialize;
 use serde_json::Value;
 use session::{Session, StoredTool, ToolStatus};
@@ -35,6 +37,7 @@ pub struct TurnRequest {
 pub async fn run_turn(
     app: AppHandle,
     gate: &ApprovalGate,
+    interaction_gate: &InteractionGate,
     request: TurnRequest,
 ) -> Result<RunOutcome, String> {
     let TurnRequest {
@@ -371,7 +374,31 @@ pub async fn run_turn(
                     }),
                 );
             });
-            let result = tools::execute(request, cancel.clone(), callback).await;
+            let result = if matches!(
+                call.name.as_str(),
+                "request_user_input" | "save_custom_tool"
+            ) {
+                let started = std::time::Instant::now();
+                let mut result = match call.name.as_str() {
+                    "request_user_input" => {
+                        execute_user_input(
+                            &app,
+                            interaction_gate,
+                            &session_id,
+                            &turn_id,
+                            &request,
+                            cancel.clone(),
+                        )
+                        .await
+                    }
+                    "save_custom_tool" => execute_save_custom_tool(&app, &request),
+                    _ => unreachable!(),
+                };
+                result.duration_ms = started.elapsed().as_millis() as u64;
+                result
+            } else {
+                tools::execute(request, cancel.clone(), callback).await
+            };
             let (model_output, _) = tools::truncate_for_model(&result.content, output_limit_kb);
             stored.output = model_output.clone();
             stored.duration_ms = result.duration_ms;
@@ -435,6 +462,86 @@ pub async fn run_turn(
     Ok(outcome)
 }
 
+async fn execute_user_input(
+    app: &AppHandle,
+    gate: &InteractionGate,
+    session_id: &str,
+    turn_id: &str,
+    request: &ToolRequest,
+    cancel: CancellationToken,
+) -> ToolResult {
+    let interaction = match InteractionRequest::from_arguments(
+        &request.arguments,
+        session_id,
+        turn_id,
+        &request.id,
+    ) {
+        Ok(interaction) => interaction,
+        Err(error) => return ToolResult::error(request, error),
+    };
+    let resolution = gate.wait(app, interaction, cancel.clone()).await;
+    if cancel.is_cancelled() {
+        let mut result = ToolResult::error(request, "本轮对话已停止，用户输入等待已解除");
+        result.cancelled = true;
+        return result;
+    }
+    if resolution.cancelled {
+        let message = resolution
+            .reason
+            .unwrap_or_else(|| "用户取消了本次输入".to_string());
+        return ToolResult::success(
+            request,
+            serde_json::json!({
+                "cancelled": true,
+                "message": format!("{message}。请根据现有上下文继续，除非确有必要，不要重复请求相同输入。")
+            })
+            .to_string(),
+        );
+    }
+    ToolResult::success(
+        request,
+        serde_json::json!({
+            "cancelled": false,
+            "values": resolution.values,
+        })
+        .to_string(),
+    )
+}
+
+fn execute_save_custom_tool(app: &AppHandle, request: &ToolRequest) -> ToolResult {
+    let input: crate::toolbox::SaveCustomToolInput =
+        match serde_json::from_value(request.arguments.clone()) {
+            Ok(input) => input,
+            Err(error) => {
+                return ToolResult::error(request, format!("save_custom_tool 参数无效：{error}"));
+            }
+        };
+    match crate::toolbox::save(input) {
+        Ok(outcome) => {
+            let notification_error = app.emit("custom_tools_updated", &outcome.tools).err();
+            let mut message = if outcome.updated {
+                "同名个性工具已更新，仅保存自然语言定义，尚未执行任何实际操作".to_string()
+            } else {
+                "个性工具已保存，仅保存自然语言定义，尚未执行任何实际操作".to_string()
+            };
+            if let Some(error) = notification_error {
+                message.push_str(&format!("；但前端列表通知失败：{error}"));
+            }
+            ToolResult::success(
+                request,
+                serde_json::json!({
+                    "saved": true,
+                    "updated": outcome.updated,
+                    "message": message,
+                    "tool": outcome.tool,
+                })
+                .to_string(),
+            )
+        }
+        Err(error) => ToolResult::error(request, error),
+    }
+}
+
 fn needs_approval(
     name: &str,
     arguments: &Value,
@@ -443,6 +550,10 @@ fn needs_approval(
     approval: &ApprovalConfig,
     python_plugin_runtime: bool,
 ) -> bool {
+    // 交互请求和个性工具定义保存不执行本机操作，不使用命令审批卡片。
+    if matches!(name, "request_user_input" | "save_custom_tool") {
+        return false;
+    }
     let shell = arguments.get("shell").and_then(Value::as_str).unwrap_or("");
     let command = arguments
         .get("command")
@@ -491,6 +602,20 @@ fn assess_tool(name: &str, arguments: &Value) -> crate::risk::RiskAssessment {
             let path = arguments.get("path").and_then(Value::as_str).unwrap_or("");
             risk::classify_write_file(path)
         }
+        "request_user_input" | "search_files" => crate::risk::RiskAssessment {
+            level: RiskLevel::L0,
+            reasons: vec!["只读搜索或收集用户输入，不执行本机修改".to_string()],
+            summary_zh: "只读操作或用户输入".to_string(),
+            requires_typed_confirmation: false,
+            matched_rules: vec!["toolbox.readonly".to_string()],
+        },
+        "save_custom_tool" => crate::risk::RiskAssessment {
+            level: RiskLevel::L1,
+            reasons: vec!["仅保存自然语言工具定义，不执行工具定义中的操作".to_string()],
+            summary_zh: "保存个性工具定义（不执行实际操作）".to_string(),
+            requires_typed_confirmation: false,
+            matched_rules: vec!["toolbox.save_definition".to_string()],
+        },
         _ => risk::classify("cmd", "systeminfo", None),
     }
 }
@@ -547,6 +672,30 @@ mod tests {
 
     fn command_arguments(shell: &str, command: &str) -> Value {
         serde_json::json!({"shell": shell, "command": command})
+    }
+
+    #[test]
+    fn toolbox_tools_have_safe_risk_and_do_not_use_command_approval() {
+        for name in ["request_user_input", "search_files"] {
+            assert_eq!(assess_tool(name, &Value::Null).level, RiskLevel::L0);
+        }
+        let save = assess_tool("save_custom_tool", &Value::Null);
+        assert_eq!(save.level, RiskLevel::L1);
+        let approval = ApprovalConfig {
+            mode: ApprovalMode::Manual,
+            readonly_needs_approval: true,
+            auto_approve_python_pip_install: false,
+        };
+        for name in ["request_user_input", "save_custom_tool"] {
+            assert!(!needs_approval(
+                name,
+                &Value::Null,
+                &save,
+                "manual",
+                &approval,
+                false,
+            ));
+        }
     }
 
     #[test]

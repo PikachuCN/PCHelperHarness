@@ -6,12 +6,14 @@ import type {
   ApprovalMode,
   ApprovalResolution,
   ChatMessage,
+  CustomTool,
   DriverInfo,
   DriverUpdateScanResult,
   EnvInfo,
   HarnessEventMap,
   HarnessEventName,
   PendingApproval,
+  PendingInteraction,
   PluginCatalog,
   RiskAssessment,
   SessionSummary,
@@ -42,6 +44,8 @@ interface HarnessState {
   currentSessionId: string | null;
   messages: ChatMessage[];
   approvals: PendingApproval[];
+  interactions: PendingInteraction[];
+  customTools: CustomTool[];
   generatingSessionId: string | null;
   resolvingApprovalIds: string[];
   config: AppConfig | null;
@@ -50,7 +54,7 @@ interface HarnessState {
   pluginCatalog: PluginCatalog | null;
   sidebarCollapsed: boolean;
   settingsOpen: boolean;
-  activeView: "chat" | "systemOverview";
+  activeView: "chat" | "systemOverview" | "toolbox";
   systemOverview: Partial<Record<SystemOverviewSection, SystemOverviewSectionState>>;
   driverUpdateScan: SystemOverviewSectionState<DriverUpdateScanResult>;
   networkTools: Partial<Record<NetworkToolId, NetworkToolState>>;
@@ -71,10 +75,13 @@ interface HarnessState {
   sendMessage: (content: string) => Promise<void>;
   cancelTurn: () => Promise<void>;
   resolveApproval: (approvalId: string, approved: boolean, reason?: string, confirmationText?: string) => Promise<ApprovalResolution | null>;
+  resolveInteraction: (interactionId: string, values: Record<string, unknown>, cancelled: boolean) => Promise<boolean>;
+  deleteCustomTool: (toolId: string) => Promise<void>;
   renameSession: (sessionId: string, title: string) => Promise<boolean>;
   deleteSession: (sessionId: string) => Promise<void>;
   exportSession: (sessionId: string) => Promise<void>;
   openSystemOverview: () => void;
+  openToolbox: () => void;
   loadSystemOverviewSection: (section: SystemOverviewSection, force?: boolean) => Promise<void>;
   refreshSystemOverview: () => void;
   scanDriverUpdates: () => Promise<void>;
@@ -162,6 +169,7 @@ const phaseLabels: Record<TurnPhase, string> = {
   reasoning: "模型正在分析",
   responding: "正在生成回复",
   approval: "等待你的审批",
+  interaction: "等待你的输入",
   tool: "正在执行工具",
   organizing: "整理执行结果",
   stopping: "正在停止",
@@ -256,6 +264,8 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   currentSessionId: null,
   messages: [],
   approvals: [],
+  interactions: [],
+  customTools: [],
   generatingSessionId: null,
   resolvingApprovalIds: [],
   config: null,
@@ -280,12 +290,13 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   activity: null,
 
   initialize: async () => {
-    const [configResult, sessionsResult, envResult, skillsResult, pluginResult] = await Promise.allSettled([
+    const [configResult, sessionsResult, envResult, skillsResult, pluginResult, customToolsResult] = await Promise.allSettled([
       ipcInvoke("get_config", {}),
       ipcInvoke("list_sessions", {}),
       ipcInvoke("get_env_info", {}),
       ipcInvoke("list_skills", {}),
       ipcInvoke("get_plugin_catalog", {}),
+      ipcInvoke("list_custom_tools", {}),
     ]);
     if (configResult.status === "fulfilled") {
       const config = configResult.value;
@@ -305,6 +316,8 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
     if (skillsResult.status === "fulfilled") set({ skills: skillsResult.value });
     if (pluginResult.status === "fulfilled") set({ pluginCatalog: pluginResult.value });
     else get().notify(`读取插件状态失败：${String(pluginResult.reason)}`, "error");
+    if (customToolsResult.status === "fulfilled") set({ customTools: customToolsResult.value });
+    else get().notify(`读取个性工具失败：${String(customToolsResult.reason)}`, "error");
     set({ initialized: true });
     const resumeSessionId = envResult.status === "fulfilled" ? envResult.value.resumeSessionId : null;
     if (resumeSessionId) await get().selectSession(resumeSessionId);
@@ -398,6 +411,7 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
     const provider = state.config?.providers.find((item) => item.id === state.config?.activeProviderId);
     const modelLabel = state.selectedModel || "未选择模型";
     set((current) => ({
+      activeView: "chat",
       messages: [...current.messages, userMessage],
       sending: sessionId === null,
       generatingSessionId: sessionId,
@@ -495,6 +509,27 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
     }
   },
 
+  resolveInteraction: async (interactionId, values, cancelled) => {
+    try {
+      await ipcInvoke("resolve_interaction", { interactionId, values, cancelled });
+      set((state) => ({ interactions: state.interactions.filter((item) => item.id !== interactionId) }));
+      return true;
+    } catch (error) {
+      get().notify(`提交输入失败：${String(error)}`, "error");
+      return false;
+    }
+  },
+
+  deleteCustomTool: async (toolId) => {
+    try {
+      const customTools = await ipcInvoke("delete_custom_tool", { toolId });
+      set({ customTools });
+      get().notify("个性工具已删除", "success");
+    } catch (error) {
+      get().notify(`删除个性工具失败：${String(error)}`, "error");
+    }
+  },
+
   renameSession: async (sessionId, rawTitle) => {
     const title = rawTitle.trim();
     if (!title) return false;
@@ -516,6 +551,7 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
         currentSessionId: state.currentSessionId === sessionId ? null : state.currentSessionId,
         messages: state.currentSessionId === sessionId ? [] : state.messages,
         approvals: state.approvals.filter((approval) => approval.sessionId !== sessionId),
+        interactions: state.interactions.filter((interaction) => interaction.sessionId !== sessionId),
         generatingSessionId: state.generatingSessionId === sessionId ? null : state.generatingSessionId,
       }));
       get().notify("对话已删除", "success");
@@ -540,6 +576,11 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
       const current = get().systemOverview[section];
       if (!current?.data && current?.status !== "loading") void get().loadSystemOverviewSection(section);
     }
+  },
+
+  openToolbox: () => {
+    set({ activeView: "toolbox" });
+    if (window.innerWidth <= 900) set({ sidebarCollapsed: true });
   },
 
   loadSystemOverviewSection: async (section, force = false) => {
@@ -802,6 +843,30 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
       get().notify(data.message, "error");
       return;
     }
+    if (event === "custom_tools_updated") {
+      set({ customTools: payload as HarnessEventMap["custom_tools_updated"] });
+      return;
+    }
+    if (event === "interaction_request") {
+      const request = payload as HarnessEventMap["interaction_request"];
+      set((current) => ({
+        interactions: current.interactions.some((item) => item.id === request.id) ? current.interactions : [...current.interactions, request],
+        activity: current.currentSessionId === request.sessionId || current.sending
+          ? advanceActivity(current.activity, request.sessionId, "interaction", `${request.title} · 提交后 AI 将继续执行`, current.activity?.step ?? 0, current.config?.execution.maxSteps ?? 25)
+          : current.activity,
+      }));
+      return;
+    }
+    if (event === "interaction_resolved") {
+      const resolved = payload as HarnessEventMap["interaction_resolved"];
+      set((current) => ({
+        interactions: current.interactions.filter((item) => item.id !== resolved.interactionId),
+        activity: current.currentSessionId === resolved.sessionId
+          ? advanceActivity(current.activity, resolved.sessionId, "organizing", resolved.cancelled ? "你已取消本次输入，AI 将调整后续方案" : "输入已提交，AI 正在继续处理", current.activity?.step ?? 0, current.config?.execution.maxSteps ?? 25)
+          : current.activity,
+      }));
+      return;
+    }
     if (event === "network_progress") {
       const data = payload as HarnessEventMap["network_progress"];
       if (state.networkDiagnostic.taskId === data.taskId) {
@@ -896,6 +961,7 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
         set((current) => ({
           generatingSessionId: null,
           sending: false,
+          interactions: current.interactions.filter((item) => item.sessionId !== data.sessionId),
           activity: advanceActivity(
             current.activity,
             data.sessionId,

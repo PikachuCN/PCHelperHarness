@@ -1,5 +1,6 @@
 mod probes;
 mod python;
+mod search;
 mod shell;
 
 use crate::risk::RiskAssessment;
@@ -130,6 +131,58 @@ fn tool_definitions_for(
             }),
         ),
         (
+            "search_files",
+            "只读搜索本机文件名或 UTF-8 文本内容；有目录深度、结果数、遍历项数和读取量上限，不跟随符号链接。",
+            json!({
+                "type":"object",
+                "properties":{
+                    "path":{"type":"string","description":"要搜索的目录"},
+                    "query":{"type":"string","description":"不区分大小写的名称或内容匹配文本"},
+                    "search_in":{"type":"string","enum":["name","content","both"]},
+                    "extensions":{"type":"array","items":{"type":"string"},"maxItems":32,"description":"例如 [\"txt\", \"log\"]"},
+                    "max_results":{"type":"integer","minimum":1,"maximum":200},
+                    "max_depth":{"type":"integer","minimum":1,"maximum":12},
+                    "include_hidden":{"type":"boolean"}
+                },
+                "required":["path","query"]
+            }),
+        ),
+        (
+            "request_user_input",
+            "当需要用户提供文字、选项、文件/文件夹或保存路径时，显示结构化输入卡片并异步等待用户。每次最多 6 个关键字段；选择路径不会读取或上传文件内容。",
+            json!({
+                "type":"object",
+                "properties":{
+                    "title":{"type":"string"},
+                    "description":{"type":"string"},
+                    "fields":{"type":"array","minItems":1,"maxItems":6,"items":crate::agent::interaction::field_schema()}
+                },
+                "required":["title","description","fields"]
+            }),
+        ),
+        (
+            "save_custom_tool",
+            "保存可复用的个性工具模板和输入字段，不执行任何代码或实际操作。同名工具会更新；prompt_template 使用 {{field_key}} 引用输入。",
+            json!({
+                "type":"object",
+                "properties":{
+                    "tool":{
+                        "type":"object",
+                        "properties":{
+                            "name":{"type":"string"},
+                            "description":{"type":"string"},
+                            "category":{"type":"string"},
+                            "prompt_template":{"type":"string","description":"自然语言操作模板，使用 {{field_key}} 占位；不包含秘密、真实文件内容或可执行代码"},
+                            "rules":{"type":"string","description":"可选的固定安全与操作规则"},
+                            "fields":{"type":"array","maxItems":12,"items":crate::agent::interaction::field_schema()}
+                        },
+                        "required":["name","description","prompt_template"]
+                    }
+                },
+                "required":["tool"]
+            }),
+        ),
+        (
             "read_registry",
             "读取 Windows 注册表键或指定值",
             json!({
@@ -188,6 +241,8 @@ pub async fn execute(
 
     let mut result = if name == "run_command" {
         shell::execute_shell(&request, cancel, on_output).await
+    } else if name == "search_files" {
+        search::execute_search(&request, cancel, on_output).await
     } else {
         probes::execute_probe(&request, cancel, on_output).await
     };
@@ -200,6 +255,20 @@ pub async fn execute(
 }
 
 impl ToolResult {
+    pub(crate) fn success(request: &ToolRequest, content: impl Into<String>) -> Self {
+        Self {
+            call_id: request.id.clone(),
+            name: request.name.clone(),
+            content: content.into(),
+            exit_code: Some(0),
+            duration_ms: 0,
+            timed_out: false,
+            cancelled: false,
+            truncated: false,
+            risk: request.risk.clone(),
+        }
+    }
+
     pub(crate) fn error(request: &ToolRequest, message: impl Into<String>) -> Self {
         Self {
             call_id: request.id.clone(),
@@ -234,6 +303,36 @@ mod tests {
         assert!(with_skills
             .iter()
             .any(|tool| tool.function.name == "read_skill_file"));
+    }
+
+    #[test]
+    fn toolbox_tools_are_always_registered() {
+        let definitions = tool_definitions_for(vec!["cmd".to_string()], false);
+        for name in ["request_user_input", "save_custom_tool", "search_files"] {
+            assert!(definitions.iter().any(|tool| tool.function.name == name));
+        }
+        let interaction = definitions
+            .iter()
+            .find(|tool| tool.function.name == "request_user_input")
+            .unwrap();
+        assert_eq!(
+            interaction.function.parameters["properties"]["fields"]["maxItems"],
+            6
+        );
+        let save = definitions
+            .iter()
+            .find(|tool| tool.function.name == "save_custom_tool")
+            .unwrap();
+        assert_eq!(
+            save.function.parameters["required"],
+            serde_json::json!(["tool"])
+        );
+        assert!(save.function.parameters["properties"]["tool"]["properties"]
+            .get("prompt_template")
+            .is_some());
+        assert!(save.function.parameters["properties"]
+            .get("prompt")
+            .is_none());
     }
 
     #[test]

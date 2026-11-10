@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Gauge, HardDrive, PanelLeftOpen, ScanSearch, Wifi } from "lucide-react";
+import { Gauge, HardDrive, LayoutGrid, PanelLeftOpen, ScanSearch, Wifi } from "lucide-react";
 import appIcon from "../../assets/icon.svg";
 import { useHarnessStore } from "../lib/store";
 import MessageItem from "./MessageItem";
@@ -23,6 +23,7 @@ export default function ChatView() {
   const sidebarCollapsed = useHarnessStore((state) => state.sidebarCollapsed);
   const toggleSidebar = useHarnessStore((state) => state.toggleSidebar);
   const sendMessage = useHarnessStore((state) => state.sendMessage);
+  const openToolbox = useHarnessStore((state) => state.openToolbox);
   const activity = useHarnessStore((state) => state.activity);
   const scrollRef = useRef<HTMLDivElement>(null);
   const currentSession = sessions.find((session) => session.id === currentSessionId);
@@ -52,8 +53,8 @@ export default function ChatView() {
           ) : messages.length === 0 ? (
             <section className="empty-state" aria-labelledby="empty-title">
               <img className="empty-symbol" src={appIcon} alt="" />
-              <h2 id="empty-title">电脑遇到问题了吗？</h2>
-              <p>描述现象，灵犀电脑管家会先诊断，再在你同意后执行修复。</p>
+              <h2 id="empty-title">今天想处理什么？</h2>
+              <p>无论是电脑故障，还是文件、图片与 PDF 任务，都可以交给灵犀电脑管家。</p>
               <div className="shortcut-grid">
                 {shortcuts.map(({ icon: Icon, title, description, prompt }) => (
                   <button key={title} type="button" className="shortcut-card" onClick={() => void sendMessage(prompt)}>
@@ -62,6 +63,9 @@ export default function ChatView() {
                   </button>
                 ))}
               </div>
+              <button type="button" className="empty-toolbox-link" onClick={openToolbox}>
+                <LayoutGrid size={16} />打开 AI 工具箱<span>批量重命名、文件搜索、图片水印、PDF 与更多预设</span>
+              </button>
             </section>
           ) : (
             <div className="message-list">

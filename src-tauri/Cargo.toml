@@ -58,6 +58,7 @@ tempfile = "3"
 url = "2"
 tauri-plugin-clipboard-manager = "2"
 libloading = "0.8"
+rfd = "0.15"
 
 [profile.release]
 lto = true

@@ -8,9 +8,11 @@ pub mod risk;
 pub mod skills;
 mod system_overview;
 mod system_overview_scripts;
+pub mod toolbox;
 pub mod tools;
 
 use agent::approval::{ApprovalDecision, ApprovalGate, ApprovalResolution};
+use agent::interaction::{FileFilter, InteractionGate};
 use agent::session::Session;
 use agent::RunOutcome;
 use config::{Config, ProviderConfig};
@@ -23,6 +25,7 @@ use tokio_util::sync::CancellationToken;
 pub struct AppState {
     config: RwLock<Config>,
     approvals: ApprovalGate,
+    interactions: InteractionGate,
     turns: Mutex<HashMap<String, CancellationToken>>,
     pub(crate) network_tasks: Mutex<HashMap<String, CancellationToken>>,
     resume_session: Option<String>,
@@ -97,6 +100,7 @@ async fn send_message(
     let result = agent::run_turn(
         app,
         &state.approvals,
+        &state.interactions,
         agent::TurnRequest {
             config,
             session_id: Some(session_id.clone()),
@@ -116,7 +120,11 @@ async fn send_message(
 }
 
 #[tauri::command]
-fn cancel_turn(state: State<'_, AppState>, session_id: String) -> Result<(), String> {
+fn cancel_turn(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<(), String> {
     let token = state
         .turns
         .lock()
@@ -129,6 +137,9 @@ fn cancel_turn(state: State<'_, AppState>, session_id: String) -> Result<(), Str
     state
         .approvals
         .reject_session(&session_id, "用户停止了本轮对话");
+    state
+        .interactions
+        .cancel_session(&app, &session_id, "用户停止了本轮对话");
     Ok(())
 }
 
@@ -150,6 +161,109 @@ fn resolve_approval(
             confirmation_text,
         },
     )
+}
+
+#[tauri::command]
+fn resolve_interaction(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    interaction_id: String,
+    values: serde_json::Value,
+    cancelled: bool,
+) -> Result<(), String> {
+    state
+        .interactions
+        .resolve(&app, &interaction_id, values, cancelled)
+}
+
+#[tauri::command]
+async fn pick_interaction_paths(
+    kind: String,
+    title: Option<String>,
+    filters: Option<Vec<FileFilter>>,
+    default_name: Option<String>,
+) -> Result<Vec<String>, String> {
+    if !matches!(kind.as_str(), "file" | "files" | "folder" | "saveFile") {
+        return Err("路径选择类型仅支持 file、files、folder 或 saveFile".to_string());
+    }
+    let filters = clean_file_filters(filters.unwrap_or_default())?;
+    let default_name = default_name.and_then(|name| {
+        std::path::Path::new(name.trim())
+            .file_name()
+            .map(|name| name.to_string_lossy().chars().take(255).collect::<String>())
+    });
+    tokio::task::spawn_blocking(move || {
+        let mut dialog = rfd::FileDialog::new();
+        if let Some(title) = title.filter(|title| !title.trim().is_empty()) {
+            dialog = dialog.set_title(title.trim());
+        }
+        for filter in filters {
+            let extensions: Vec<&str> = filter.extensions.iter().map(String::as_str).collect();
+            dialog = dialog.add_filter(filter.name, &extensions);
+        }
+        if let Some(default_name) = default_name.filter(|name| !name.is_empty()) {
+            dialog = dialog.set_file_name(default_name);
+        }
+        let paths = match kind.as_str() {
+            "file" => dialog.pick_file().into_iter().collect(),
+            "files" => dialog.pick_files().unwrap_or_default(),
+            "folder" => dialog.pick_folder().into_iter().collect(),
+            "saveFile" => dialog.save_file().into_iter().collect(),
+            _ => unreachable!(),
+        };
+        Ok(paths
+            .into_iter()
+            .map(|path| path.display().to_string())
+            .collect())
+    })
+    .await
+    .map_err(|error| format!("文件选择任务失败：{error}"))?
+}
+
+fn clean_file_filters(filters: Vec<FileFilter>) -> Result<Vec<FileFilter>, String> {
+    if filters.len() > 12 {
+        return Err("文件过滤器最多允许 12 组".to_string());
+    }
+    let mut cleaned = Vec::new();
+    for filter in filters {
+        let name = filter.name.trim();
+        if name.is_empty() || name.chars().count() > 80 {
+            return Err("文件过滤器名称不能为空且不能超过 80 个字符".to_string());
+        }
+        let mut extensions = Vec::new();
+        for extension in filter.extensions.into_iter().take(32) {
+            let extension = extension
+                .trim()
+                .trim_start_matches("*.")
+                .trim_start_matches('.')
+                .chars()
+                .filter(|character| character.is_ascii_alphanumeric())
+                .take(32)
+                .collect::<String>();
+            if !extension.is_empty() && !extensions.contains(&extension) {
+                extensions.push(extension);
+            }
+        }
+        if !extensions.is_empty() {
+            cleaned.push(FileFilter {
+                name: name.to_string(),
+                extensions,
+            });
+        }
+    }
+    Ok(cleaned)
+}
+
+#[tauri::command]
+fn list_custom_tools() -> Result<Vec<toolbox::CustomTool>, String> {
+    toolbox::list()
+}
+
+#[tauri::command]
+fn delete_custom_tool(app: AppHandle, tool_id: String) -> Result<Vec<toolbox::CustomTool>, String> {
+    let tools = toolbox::delete(&tool_id)?;
+    let _ = app.emit("custom_tools_updated", &tools);
+    Ok(tools)
 }
 
 #[tauri::command]
@@ -183,7 +297,11 @@ fn rename_session(
 }
 
 #[tauri::command]
-fn delete_session(state: State<'_, AppState>, session_id: String) -> Result<(), String> {
+fn delete_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<(), String> {
     if let Some(token) = state
         .turns
         .lock()
@@ -194,6 +312,9 @@ fn delete_session(state: State<'_, AppState>, session_id: String) -> Result<(), 
         token.cancel();
     }
     state.approvals.reject_session(&session_id, "会话已删除");
+    state
+        .interactions
+        .cancel_session(&app, &session_id, "会话已删除");
     agent::session::delete(&session_id).map_err(|error| error.to_string())
 }
 
@@ -462,6 +583,7 @@ pub fn run() {
         .manage(AppState {
             config: RwLock::new(loaded.config),
             approvals: ApprovalGate::default(),
+            interactions: InteractionGate::default(),
             turns: Mutex::new(HashMap::new()),
             network_tasks: Mutex::new(HashMap::new()),
             resume_session,
@@ -492,6 +614,10 @@ pub fn run() {
             send_message,
             cancel_turn,
             resolve_approval,
+            resolve_interaction,
+            pick_interaction_paths,
+            list_custom_tools,
+            delete_custom_tool,
             list_sessions,
             load_session,
             get_message_prompt,
